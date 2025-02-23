@@ -84,7 +84,7 @@ class ChessStockfishEnv(gym.Env):
 
         # Check if game ended after player move
         if self.board.is_game_over():
-            result = self._game_result_reward()
+            result = self._game_result_reward(player_caused=True)  # Player caused the game to end
             infos["result"] = result[1]["result"]
             return fen_to_tensor(self.board.fen()), result[0], True, False, infos
 
@@ -98,7 +98,7 @@ class ChessStockfishEnv(gym.Env):
 
         # Check if game ended after Stockfish move
         if self.board.is_game_over():
-            result = self._game_result_reward()
+            result = self._game_result_reward(player_caused=False)  # Stockfish caused the game to end
             infos["result"] = result[1]["result"]
             return fen_to_tensor(self.board.fen()), result[0], True, False, infos
 
@@ -117,17 +117,27 @@ class ChessStockfishEnv(gym.Env):
         # Check if the game is over (redundant, but ensures correctness)
         done = self.board.is_game_over()
         if done:
-            result = self._game_result_reward()
+            result = self._game_result_reward(player_caused=False)  # Stockfish caused the game to end
             infos["result"] = result[1]["result"]
             reward = result[0]
 
         return fen_to_tensor(self.board.fen()), reward, done, False, infos
 
-    def _game_result_reward(self):
-        """Calculate terminal rewards based on game result."""
+    def _game_result_reward(self, player_caused):
+        """Calculate terminal rewards based on game result and who caused it."""
         if self.board.is_checkmate():
-            return (-1.0, {"result": "loss"}) if self.board.turn else (1.0, {"result": "win"})
-        return (0.0, {"result": "draw"})
+            if player_caused:
+                # Player delivered checkmate (player wins)
+                return (1.0, {"result": "win"})
+            else:
+                # Stockfish delivered checkmate (player loses)
+                return (-1.0, {"result": "loss"})
+        elif self.board.is_stalemate() or self.board.is_insufficient_material() or self.board.is_seventyfive_moves() or self.board.is_fivefold_repetition():
+            # Draw
+            return (0.0, {"result": "draw"})
+        else:
+            # Other terminal states (e.g. timeout)
+            return (0.0, {"result": "unknown"})
 
     def render(self, mode='human'):
         """Render the current board state."""
@@ -151,7 +161,7 @@ if __name__ == "__main__":
                             stockfish_elo=1320,
                             reward_eval_elo=1500)
 
-    obs = env.reset(fen="r1bq1rk1/2pp1ppp/p1n2n2/2b1p3/1pP1P3/1B1P1N2/PP3PPP/RNBQR1K1 b - c3 0 9" )
+    obs = env.reset(fen="r1bq1rk1/2pp1ppp/p1n2n2/2b1p3/1pP1P3/1B1P1N2/PP3PPP/RNBQR1K1 w - c3 0 9" )
     done = False
     total_reward = 0
     while not done:

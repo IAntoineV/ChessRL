@@ -38,45 +38,8 @@ def fen_to_tensor(fen: str):
     return tensor
 
 
-class MaGating(torch.nn.Module):
-    """
-    Magnitude aware gating to control magnitudes of channels.
-
-    """
-    def __init__(self,d_model):
-        super().__init__()
-        self.a = torch.nn.Parameter(torch.zeros(64,d_model))
-        self.b = torch.nn.Parameter(torch.ones(64,d_model))
-
-    def forward(self,x):
-        return x*torch.exp(self.a) + self.b
-
-
-class FenEncoder(torch.nn.Module):
-    def __init__(self, d_model,num_planes = 19):
-        super().__init__()
-        self.num_planes = num_planes
-        self.linear1 = torch.nn.Linear(num_planes,d_model)
-        self.layernorm1 = torch.nn.LayerNorm(d_model)
-        self.ma_gating = MaGating(d_model)
-
-
-    def forward(self, x):
-        x = x.view(-1,64,self.num_planes)
-        x = self.linear1(x)
-        x = torch.nn.GELU()(x)
-        x = self.layernorm1(x)
-        x = self.ma_gating(x)
-        return x
-
 if __name__ == "__main__":
 
     fen = "r1bq1rk1/2pp1ppp/p1n2n2/2b1p3/1pP1P3/1B1P1N2/PP3PPP/RNBQR1K1 b - c3 0 9"
     tensor = fen_to_tensor(fen)
     print(tensor.shape)  # Should output (8, 8, 19)
-
-    d_model = 768
-    model = FenEncoder(d_model)
-    inp = torch.from_numpy(fen_to_tensor(fen)).unsqueeze(0)
-    out = model(inp)
-    print(out.shape)  # Should output torch.Size([8, 8, 256])
