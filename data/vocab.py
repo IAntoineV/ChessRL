@@ -225,6 +225,7 @@ policy_index = [
     "h2g1q","h2g1r","h2g1b","h2h1q","h2h1r","h2h1b"
 ]
 
-
-
+def get_hash_table_vocab_to_index(vocab_list=None):
+    vocab_list = policy_index if vocab_list is None else vocab_list
+    return {move : k  for k,move in enumerate(vocab_list)}
 print("Number of unique tokens: ", len(policy_index))
