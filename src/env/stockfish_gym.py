@@ -5,12 +5,12 @@ import chess
 import chess.engine
 import random as rd
 from gymnasium import spaces
-from data.vocab import policy_index, get_hash_table_vocab_to_index
-from data.fen_encoder import fen_to_tensor
+from data_process.vocab import policy_index, get_hash_table_vocab_to_index
+from data_process.fen_encoder import fen_to_tensor
 
 
 class ChessStockfishEnv(gym.Env):
-    metadata = {'render.modes': ['human']}
+    metadata = {"render.modes": ["human"]}
 
     def __init__(self, stockfish_path, stockfish_elo=1350, reward_eval_elo=1500):
         super(ChessStockfishEnv, self).__init__()
@@ -25,18 +25,25 @@ class ChessStockfishEnv(gym.Env):
 
         # Create opponent engine
         self.opponent_engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
-        self.opponent_engine.configure({"UCI_LimitStrength": True, "UCI_Elo": stockfish_elo})
+        self.opponent_engine.configure(
+            {"UCI_LimitStrength": True, "UCI_Elo": stockfish_elo}
+        )
 
         # Create evaluation engine for rewards
         self.reward_engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
-        self.reward_engine.configure({"UCI_LimitStrength": True, "UCI_Elo": reward_eval_elo})
+        self.reward_engine.configure(
+            {"UCI_LimitStrength": True, "UCI_Elo": reward_eval_elo}
+        )
 
         # Define action and observation spaces
-        self.action_space = spaces.Discrete(len(policy_index))  # Use move vocabulary size
+        self.action_space = spaces.Discrete(
+            len(policy_index)
+        )  # Use move vocabulary size
         self.observation_space = spaces.Box(
-            low=0, high=1,
+            low=0,
+            high=1,
             shape=fen_to_tensor(self.board.fen()).shape,  # Use FEN encoder output shape
-            dtype=np.float32
+            dtype=np.float32,
         )
 
         # Store move vocabulary
@@ -46,7 +53,10 @@ class ChessStockfishEnv(gym.Env):
 
     def get_legal_move_mask(self, dtype=torch.float32, device="cpu"):
         mask = torch.zeros(len(policy_index), dtype=dtype, device=device)
-        indices = torch.tensor([self.vocab_to_index[move] for move in self.current_legal_moves], device=device)
+        indices = torch.tensor(
+            [self.vocab_to_index[move] for move in self.current_legal_moves],
+            device=device,
+        )
         mask.scatter_(0, indices, 1)
         return mask
 
@@ -84,7 +94,9 @@ class ChessStockfishEnv(gym.Env):
 
         # Check if game ended after player move
         if self.board.is_game_over():
-            result = self._game_result_reward(player_caused=True)  # Player caused the game to end
+            result = self._game_result_reward(
+                player_caused=True
+            )  # Player caused the game to end
             infos["result"] = result[1]["result"]
             return fen_to_tensor(self.board.fen()), result[0], True, False, infos
 
@@ -98,14 +110,18 @@ class ChessStockfishEnv(gym.Env):
 
         # Check if game ended after Stockfish move
         if self.board.is_game_over():
-            result = self._game_result_reward(player_caused=False)  # Stockfish caused the game to end
+            result = self._game_result_reward(
+                player_caused=False
+            )  # Stockfish caused the game to end
             infos["result"] = result[1]["result"]
             return fen_to_tensor(self.board.fen()), result[0], True, False, infos
 
         # Calculate reward using evaluation engine
         try:
-            analysis = self.reward_engine.analyse(self.board, chess.engine.Limit(depth=10))
-            score = analysis['score'].white().score(mate_score=10000)
+            analysis = self.reward_engine.analyse(
+                self.board, chess.engine.Limit(depth=10)
+            )
+            score = analysis["score"].white().score(mate_score=10000)
             reward = np.tanh(score / 1000)  # Normalize to [-1, 1]
         except chess.engine.EngineTerminatedError:
             infos["error"] = "Engine reward crashed"
@@ -117,7 +133,9 @@ class ChessStockfishEnv(gym.Env):
         # Check if the game is over (redundant, but ensures correctness)
         done = self.board.is_game_over()
         if done:
-            result = self._game_result_reward(player_caused=False)  # Stockfish caused the game to end
+            result = self._game_result_reward(
+                player_caused=False
+            )  # Stockfish caused the game to end
             infos["result"] = result[1]["result"]
             reward = result[0]
 
@@ -132,14 +150,19 @@ class ChessStockfishEnv(gym.Env):
             else:
                 # Stockfish delivered checkmate (player loses)
                 return (-1.0, {"result": "loss"})
-        elif self.board.is_stalemate() or self.board.is_insufficient_material() or self.board.is_seventyfive_moves() or self.board.is_fivefold_repetition():
+        elif (
+            self.board.is_stalemate()
+            or self.board.is_insufficient_material()
+            or self.board.is_seventyfive_moves()
+            or self.board.is_fivefold_repetition()
+        ):
             # Draw
             return (0.0, {"result": "draw"})
         else:
             # Other terminal states (e.g. timeout)
             return (0.0, {"result": "unknown"})
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         """Render the current board state."""
         print(self.board.unicode())
         return
@@ -149,30 +172,37 @@ class ChessStockfishEnv(gym.Env):
         print("Quit engines")
         self.opponent_engine.quit()
         self.reward_engine.quit()
+
     def __del__(self):
         self.close()
 
     def samples_legal_action(self):
 
         return rd.sample([elt.__str__() for elt in self.board.legal_moves], 1)[0]
-if __name__ == "__main__":
 
-    env = ChessStockfishEnv(stockfish_path="./stockfish/stockfish-ubuntu-x86-64-avx2",
-                            stockfish_elo=1320,
-                            reward_eval_elo=1500)
 
-    obs = env.reset(fen="r1bq1rk1/2pp1ppp/p1n2n2/2b1p3/1pP1P3/1B1P1N2/PP3PPP/RNBQR1K1 w - c3 0 9" )
-    done = False
-    total_reward = 0
-    while not done:
-        action = env.samples_legal_action()
+# if __name__ == "__main__":
 
-        obs, reward, terminated, truncated, info = env.step(env.vocab_to_index[action])
-        total_reward += reward
-        print("="*20)
-        env.render()
+#     env = ChessStockfishEnv(
+#         stockfish_path="./stockfish/stockfish-ubuntu-x86-64-avx2",
+#         stockfish_elo=1320,
+#         reward_eval_elo=1500,
+#     )
 
-        if terminated:
-            print(f"Game ended. Total reward: {total_reward}")
-            print("Final result:", info)
-            break
+#     obs = env.reset(
+#         fen="r1bq1rk1/2pp1ppp/p1n2n2/2b1p3/1pP1P3/1B1P1N2/PP3PPP/RNBQR1K1 w - c3 0 9"
+#     )
+#     done = False
+#     total_reward = 0
+#     while not done:
+#         action = env.samples_legal_action()
+
+#         obs, reward, terminated, truncated, info = env.step(env.vocab_to_index[action])
+#         total_reward += reward
+#         print("=" * 20)
+#         env.render()
+
+#         if terminated:
+#             print(f"Game ended. Total reward: {total_reward}")
+#             print("Final result:", info)
+#             break

@@ -7,10 +7,10 @@ import numpy as np
 import torch
 from attr import dataclass
 
-from data.fen_encoder import fen_to_tensor
-from data.vocab import policy_index
+from data_process.fen_encoder import fen_to_tensor
+from data_process.vocab import policy_index
 
-from data.game_sampler import linear_augmentation_sampler, order_and_compute_deltas
+from data_process.game_sampler import linear_augmentation_sampler, order_and_compute_deltas
 @dataclass
 class ParsingConfig:
     batch_size = 32

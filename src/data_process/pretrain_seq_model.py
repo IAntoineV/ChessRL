@@ -5,9 +5,9 @@ import torch
 from tqdm import tqdm
 import numpy as np
 from models.seq_model import SeqModel, SeqModelConfig
-from data.vocab import policy_index, get_hash_table_vocab_to_index
-from data.parse import dir_iterator_fen_move, ParsingConfigFenMove, encode_fens
-from data.fen_encoder import fen_to_tensor
+from data_process.vocab import policy_index, get_hash_table_vocab_to_index
+from data_process.parse import dir_iterator_fen_move, ParsingConfigFenMove, encode_fens
+from data_process.fen_encoder import fen_to_tensor
 
 device= "cuda" if torch.cuda.is_available() else "cpu"
 seq_len=64
