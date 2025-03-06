@@ -181,28 +181,28 @@ class ChessStockfishEnv(gym.Env):
         return rd.sample([elt.__str__() for elt in self.board.legal_moves], 1)[0]
 
 
-# if __name__ == "__main__":
+if __name__ == "__main__":
 
-#     env = ChessStockfishEnv(
-#         stockfish_path="./stockfish/stockfish-ubuntu-x86-64-avx2",
-#         stockfish_elo=1320,
-#         reward_eval_elo=1500,
-#     )
+    env = ChessStockfishEnv(
+        stockfish_path="./stockfish/stockfish-ubuntu-x86-64-avx2",
+        stockfish_elo=1320,
+        reward_eval_elo=1500,
+    )
 
-#     obs = env.reset(
-#         fen="r1bq1rk1/2pp1ppp/p1n2n2/2b1p3/1pP1P3/1B1P1N2/PP3PPP/RNBQR1K1 w - c3 0 9"
-#     )
-#     done = False
-#     total_reward = 0
-#     while not done:
-#         action = env.samples_legal_action()
+    obs = env.reset(
+        fen="r1bq1rk1/2pp1ppp/p1n2n2/2b1p3/1pP1P3/1B1P1N2/PP3PPP/RNBQR1K1 w - c3 0 9"
+    )
+    done = False
+    total_reward = 0
+    while not done:
+        action = env.samples_legal_action()
 
-#         obs, reward, terminated, truncated, info = env.step(env.vocab_to_index[action])
-#         total_reward += reward
-#         print("=" * 20)
-#         env.render()
+        obs, reward, terminated, truncated, info = env.step(env.vocab_to_index[action])
+        total_reward += reward
+        print("=" * 20)
+        env.render()
 
-#         if terminated:
-#             print(f"Game ended. Total reward: {total_reward}")
-#             print("Final result:", info)
-#             break
+        if terminated:
+            print(f"Game ended. Total reward: {total_reward}")
+            print("Final result:", info)
+            break
