@@ -7,10 +7,10 @@ import numpy as np
 import torch
 from attr import dataclass
 
-from data_process.fen_encoder import fen_to_tensor
-from data_process.vocab import policy_index
+from fen_encoder import fen_to_tensor
+from vocab import policy_index
 
-from data_process.game_sampler import linear_augmentation_sampler, order_and_compute_deltas
+from game_sampler import linear_augmentation_sampler, order_and_compute_deltas
 @dataclass
 class ParsingConfig:
     batch_size = 32
@@ -160,20 +160,20 @@ def dir_iterator_fen_move(dir_path,config:ParsingConfigFenMove=None):
                 yield next(gen)
             except:
                 break
-if __name__ == "__main__":
-    dir_path = "../pgn_data_example"
-    config = ParsingConfig()
-    config.batch_size=2
+# if __name__ == "__main__":
+#     dir_path = "../pgn_data_example"
+#     config = ParsingConfig()
+#     config.batch_size=2
 
-    gen = dir_iterator(dir_path, config, return_fen = False)
-    for _ in range(1):
-        fens,moves = next(gen)
-        print(fens.shape,moves.dtype)
+#     gen = dir_iterator(dir_path, config, return_fen = False)
+#     for _ in range(1):
+#         fens,moves = next(gen)
+#         print(fens.shape,moves.dtype)
 
-    config = ParsingConfigFenMove()
-    config.batch_size = 2
+#     config = ParsingConfigFenMove()
+#     config.batch_size = 2
 
-    gen = dir_iterator_fen_move(dir_path, config)
-    for _ in range(1):
-        fens, moves = next(gen)
-        print(fens.shape, moves)
+#     gen = dir_iterator_fen_move(dir_path, config)
+#     for _ in range(1):
+#         fens, moves = next(gen)
+#         print(fens.shape, moves)
