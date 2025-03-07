@@ -1,11 +1,310 @@
-#vocab consists of
+import chess.pgn
 import chess
-
-#all the possible moves
-#special tokens start_think and end_think
-#special token end
-#special token end_variation
 import numpy as np
+from typing import Tuple, List
+import random
+import ray
+import time
+import codecs
+import os
+from vocab import policy_index
+dic_piece = {"P": 0, "N": 1, "B": 2, "R": 3, "Q": 4, "K": 5, "p": 6, "n": 7, "b": 8, "r": 9, "q": 10, "k": 11}
+params = (3.781083215802374, 355.0827163803461, 1421.9764397854142)
+
+
+def uniform_density(elo_min=500, elo_max=3000):
+    return 1 / (elo_max - elo_min)
+
+
+def board_to_transformer_input(board: chess.Board) -> Tuple[np.ndarray,np.ndarray]:
+    if board.turn == chess.WHITE:
+        color = 1
+    else:
+        color = 0
+
+    bitboard = np.zeros(33, dtype=np.int64)
+    bitboard[0] = 12 * 64 + color
+    mask = np.zeros((33, 33), dtype=np.int64)
+    for i, piece in enumerate(board.piece_map()):
+        # print(piece,board.piece_at(piece).symbol())
+        bitboard[i + 1] = piece + dic_piece[board.piece_at(piece).symbol()] * 64
+    mask_length = np.sum(np.where(bitboard != 0, 1, 0))
+    mask[:mask_length, :mask_length] = 1
+    return bitboard, mask
+
+
+def board_to_input_data(board: chess.Board) -> np.ndarray:
+    piece_types = [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING]
+    piece_colors = [chess.WHITE, chess.BLACK]
+
+    input_data = []
+
+    for color in piece_colors:
+        for piece_type in piece_types:
+            # Create a binary mask for the specified piece type and color
+            mask = np.zeros((8, 8), dtype=np.float32)
+            for square in board.pieces(piece_type, color):
+                mask[chess.square_rank(square)][chess.square_file(square)] = 1
+            input_data.append(mask)
+    input_data = np.transpose(input_data, (1, 2, 0))
+
+    return np.array(input_data, dtype=np.float32)
+
+
+def generate_batch(batch_size, in_pgn):
+    total_pos = 0
+    x = []
+    y_true = []
+    last_x = []
+    history = 7
+    moves = []
+    start_index = 0
+    board = None
+    pgn = None
+    x_start = []
+    xs = []
+    ys = []
+    # with codecs.open(in_pgn,'r',"ISO-8859-1") as f:
+    with open(in_pgn, encoding="utf8") as f:
+        while True:
+            # load game
+            del pgn
+            pgn = chess.pgn.read_game(f)
+            if pgn.next() != None:
+                del moves
+                moves = [move for move in pgn.mainline_moves()]
+                try:
+                    elo = min(int(pgn.headers["WhiteElo"]), int(pgn.headers["BlackElo"]))
+                except:
+                    elo = 1500
+                # if len(moves)>=11 and elo>=1100 and random.random() < uniform_density()/(weibull_min.pdf(elo,3.781083215802374, 355.0827163803461, 1421.9764397854142)):
+                if len(moves) >= 11 and elo >= 2200 and 'FEN' not in pgn.headers.keys() and '960' not in pgn.headers[
+                    'Event'] and 'Odds' not in pgn.headers['Event'] and 'house' not in pgn.headers['Event']:
+                    del start_index
+                    start_index = random.randint(10, len(moves) - 1)
+                    max_index = min(150, len(moves) - 1)
+                    # max_index = start_index+4
+                    # make the start_index first moves
+                    del board
+                    board = chess.Board()
+                    del x_start
+                    x_start = []
+
+                    for i, move in enumerate(moves[:start_index]):
+                        del xs, ys
+                        xs, ys = get_board_data(pgn, board, move, i)
+                        if (start_index - i) % 2 == 0:
+                            x_start.append(xs)
+                        else:
+                            x_start.append(swap_side(xs))
+
+                    x_start = x_start[start_index - (history):]
+                    x_start = np.concatenate([x[:, :, :12] for x in x_start], axis=-1)
+                    for i, move in enumerate(moves[start_index:max_index]):
+
+                        if total_pos % batch_size == 0 and len(x) != 0:
+                            x = np.array(x, dtype=np.float32)
+                            y_true = np.array(y_true, dtype=np.float32)
+                            yield (x, y_true)
+
+                            # reset variables
+                            del last_x
+                            last_x = x[-1]
+                            del x
+                            x = []
+                            del y_true
+                            y_true = []
+
+                        del xs, ys
+                        xs, ys = get_board_data(pgn, board, move, start_index + i)
+                        if i == 0:
+                            x.append(np.concatenate((x_start, xs), axis=-1))
+                        else:
+                            if len(x) == 0:
+                                x.append(np.concatenate((swap_side(last_x[:, :, 12:(history + 1) * 12]), xs), axis=-1))
+                            else:
+                                x.append(np.concatenate((swap_side(x[-1][:, :, 12:(history + 1) * 12]), xs), axis=-1))
+                        y_true.append(ys)
+                        total_pos += 1
+
+
+def generate_batch_dir(batch_size, in_dir):
+    for in_pgn in os.listdir(in_dir):
+        print(in_pgn)
+        gen = generate_batch(batch_size, os.path.join(in_dir, in_pgn))
+        while True:
+            try:
+                yield next(gen)
+            except:
+                break
+    print("finished all pgns")
+
+
+def mirror_uci_string(uci_string):
+    """
+    Mirrors a uci string
+    """
+    if len(uci_string) <= 4:
+        return uci_string[0] + str(9 - int(uci_string[1])) + uci_string[2] + str(9 - int(uci_string[3]))
+    else:
+        return uci_string[0] + str(9 - int(uci_string[1])) + uci_string[2] + str(9 - int(uci_string[3])) + uci_string[4]
+
+
+def get_board(elo, board, real_move, TC, move_number):
+    if board.turn == chess.WHITE:
+        color = 1
+        mirrored_board = board.copy()
+        move = real_move
+    else:
+        color = 0
+        mirrored_board = board.mirror()
+        mirror_uci = mirror_uci_string(real_move.uci())
+        move = chess.Move.from_uci(mirror_uci)
+
+    try:
+        elo = float(elo)
+    except:
+        elo = 1500
+    elo = elo / 3000
+    TC = TC.split('+')[0]
+    if TC == '-':
+        TC = 600
+    else:
+        TC = float(TC.split('+')[0])
+
+    TC = TC / 120
+
+    color = np.ones((8, 8, 1), dtype=np.float32) * color
+    elo = np.ones((8, 8, 1), dtype=np.float32) * elo
+    TC = np.ones((8, 8, 1), dtype=np.float32) * TC
+    before = board_to_input_data(mirrored_board)
+
+    # add castling rights for white and black
+    castling_rights = np.ones((8, 8, 4), dtype=np.float32)
+    if not mirrored_board.has_kingside_castling_rights(chess.WHITE):
+        castling_rights[:, :, 0] = 0
+    if not mirrored_board.has_queenside_castling_rights(chess.WHITE):
+        castling_rights[:, :, 1] = 0
+    if not mirrored_board.has_kingside_castling_rights(chess.BLACK):
+        castling_rights[:, :, 2] = 0
+    if not mirrored_board.has_queenside_castling_rights(chess.BLACK):
+        castling_rights[:, :, 3] = 0
+
+    # add en passant rights
+    en_passant_right = np.ones((8, 8, 1), dtype=np.float32)
+    # to comment later
+    # en_passant_right *=move_number
+    if not mirrored_board.has_pseudo_legal_en_passant():
+        en_passant_right *= 0
+
+    lm = - np.ones(1858, dtype=np.float32)
+    for possible in mirrored_board.legal_moves:
+        possible_str = possible.uci()
+        if possible_str[-1] != 'n':
+            lm[policy_index.index(possible_str)] = 0
+        else:
+            lm[policy_index.index(possible_str[:-1])] = 0
+
+    # find the index of the move in policy_index
+    if move.uci()[-1] != 'n':
+        move_id = policy_index.index(move.uci())
+    else:
+        move_id = policy_index.index(move.uci()[:-1])
+
+    one_hot_move = np.zeros(1858, dtype=np.float32)
+    one_hot_move[move_id] = 1
+
+    board.push(real_move)
+    mirrored_board.push(move)
+
+    one_hot_move = one_hot_move + lm
+
+    del mirrored_board
+    return np.concatenate((before, castling_rights, en_passant_right, color, TC, elo), axis=2), one_hot_move
+
+
+def get_board_data(pgn, board, real_move, move_number):
+    if board.turn == chess.WHITE:
+        try:
+            elo = pgn.headers["WhiteElo"]
+        except:
+            elo = '1500'
+    else:
+        try:
+            elo = pgn.headers["BlackElo"]
+        except:
+            elo = '1500'
+    try:
+        TC = pgn.headers['TimeControl']
+    except:
+        TC = '300'
+    return get_board(elo, board, real_move, TC, move_number)
+
+
+def get_x_from_board(elo, board, TC):
+    # print(board.turn == chess.WHITE)
+    if board.turn == chess.WHITE:
+        color = 1
+        mirrored_board = board.copy()
+    else:
+        color = 0
+        # print("yes")
+        mirrored_board = board.mirror()
+
+    try:
+        elo = float(elo)
+    except:
+        elo = 1500
+    elo = elo / 3000
+
+    TC = TC.split('+')[0]
+    if TC == '-':
+        TC = 600
+    else:
+        TC = float(TC.split('+')[0])
+
+    TC = TC / 120
+
+    color = np.ones((8, 8, 1), dtype=np.float32) * color
+    elo = np.ones((8, 8, 1), dtype=np.float32) * elo
+    TC = np.ones((8, 8, 1), dtype=np.float32) * TC
+
+    before = board_to_input_data(mirrored_board)
+
+    # add castling rights for white and black
+    castling_rights = np.ones((8, 8, 4), dtype=np.float32)
+    if not mirrored_board.has_kingside_castling_rights(chess.WHITE):
+        castling_rights[:, :, 0] = 0
+    if not mirrored_board.has_queenside_castling_rights(chess.WHITE):
+        castling_rights[:, :, 1] = 0
+    if not mirrored_board.has_kingside_castling_rights(chess.BLACK):
+        castling_rights[:, :, 2] = 0
+    if not mirrored_board.has_queenside_castling_rights(chess.BLACK):
+        castling_rights[:, :, 3] = 0
+
+    # add en passant rights
+    en_passant_right = np.ones((8, 8, 1), dtype=np.float32)
+    if not mirrored_board.has_pseudo_legal_en_passant():
+        en_passant_right *= 0
+
+    return np.concatenate((before, castling_rights, en_passant_right, color, TC, elo), axis=2)
+
+
+def swap_side(array):
+    num_filters = array.shape[-1]
+
+    flipped = np.flip(array, axis=0)
+
+    num_positions = num_filters // 12
+
+    reordered = []
+
+    for k in range(num_positions):
+        reordered.append(flipped[:, :, (12 * k) + 6:(12 * k) + 12])
+        reordered.append(flipped[:, :, (12 * k):(12 * k) + 6])
+
+    return np.concatenate(reordered, axis=-1)
+
 
 policy_index = [
     "a1b1", "a1c1", "a1d1", "a1e1", "a1f1", "a1g1", "a1h1", "a1a2", "a1b2",
@@ -215,99 +514,90 @@ policy_index = [
     "e7f8q", "e7f8r", "e7f8b", "f7e8q", "f7e8r", "f7e8b", "f7f8q", "f7f8r",
     "f7f8b", "f7g8q", "f7g8r", "f7g8b", "g7f8q", "g7f8r", "g7f8b", "g7g8q",
     "g7g8r", "g7g8b", "g7h8q", "g7h8r", "g7h8b", "h7g8q", "h7g8r", "h7g8b",
-    "h7h8q", "h7h8r", "h7h8b",
-
+    "h7h8q", "h7h8r", "h7h8b"
 ]
 
-"""
-Moves in UCI that are not in policy index.
 
-#add the promotions for black
-    "a2a1q","a2a1r","a2a1b","a2b1q","a2b1r","a2b1b",
-    "b2a1q","b2a1r","b2a1b","b2b1q","b2b1r","b2b1b","b2c1q","b2c1r","b2c1b",
-    "c2b1q","c2b1r","c2b1b","c2c1q","c2c1r","c2c1b","c2d1q","c2d1r","c2d1b",
-    "d2c1q","d2c1r","d2c1b","d2d1q","d2d1r","d2d1b","d2e1q","d2e1r","d2e1b",
-    "e2d1q","e2d1r","e2d1b","e2e1q","e2e1r","e2e1b","e2f1q","e2f1r","e2f1b",
-    "f2e1q","f2e1r","f2e1b","f2f1q","f2f1r","f2f1b","f2g1q","f2g1r","f2g1b",
-    "g2f1q","g2f1r","g2f1b","g2g1q","g2g1r","g2g1b","g2h1q","g2h1r","g2h1b",
-    "h2g1q","h2g1r","h2g1b","h2h1q","h2h1r","h2h1b",
-# White Knight Promotions
-    "a7a8n","a7b8n","b7a8n","b7b8n","b7c8n","c7b8n",
-    "c7c8n","c7d8n","d7c8n","d7d8n","d7e8n","e7d8n",
-    "e7e8n","e7f8n","f7e8n","f7f8n","f7g8n","g7f8n",
-    "g7g8n","g7h8n","h7g8n","h7h8n",
+def generator_uniform(pgn, batch_size):
+    generator = RemoteWorker.remote(batch_size, pgn)
+    n_batches_ref = [generator.get_next.remote() for _ in range(batch_size)]
+    n_batches = []
+    total_yields = 0
+    print(f"generating first {batch_size} batches")
+    while True:
 
-# Black Knight Promotions
-    "a2a1n","a2b1n","b2a1n","b2b1n","b2c1n","c2b1n",
-    "c2c1n","c2d1n","d2c1n","d2d1n","d2e1n","e2d1n",
-    "e2e1n","e2f1n","f2e1n","f2f1n","f2g1n","g2f1n",
-    "g2g1n","g2h1n","h2g1n","h2h1n"
-    """
-
-def get_hash_table_vocab_to_index(vocab_list=None):
-    vocab_list = policy_index if vocab_list is None else vocab_list
-    return {move : k  for k,move in enumerate(vocab_list)}
-
-
-class PolicyIndex:
-    def __init__(self):
-        self.policy_index = policy_index
-        self.token_to_index = {move: k for k, move in enumerate(self.policy_index)}
-    def uci_to_token(self, L_uci, color):
-        L_uci_white = list(map(lambda x: x[0] if x[1]==chess.WHITE else self.mirror_uci_string(x[0]), zip(L_uci, color)))
-        L_tokens = list(map(lambda x : x[:-1] if x[-1]=="n" else x, L_uci_white))
-        return L_tokens
-
-    def uci_to_index(self, L_uci, color):
-        L_tokens = self.uci_to_token(L_uci, color)
-        return [ self.token_to_index[token] for token in L_tokens ]
-
-    def token_to_uci(self, board : chess.Board, token):
-
-        knight_prom=False
-
-        if len(token)==4: # No promotion (or knight promotions)
-            # Check if piece go to last line (possible promotion to knight)
-            check = token[3] == "8"
-            if board.turn==chess.BLACK:
-                check = token[3] == "1"
-            if check:
-                # Check for pawn move
-                letter = token[0]
-                number = int(token[1]) - 1
-                if board.turn==chess.BLACK:
-                    number = 7-number
-                letter_int = ord(letter) - 61
-                piece = board.piece_at(letter_int + 8 * number)
-                if piece is chess.PAWN:
-                    # The move is a knight promotion
-                    knight_prom=True
-        uci = token
-        if knight_prom:
-            uci += "n"
-        if board.turn == chess.BLACK:
-            uci = self.mirror_uci_string(uci)
-        return uci
-
-    @staticmethod
-    def mirror_uci_string(uci_string): # Mirrors a uci string
-        
-        if len(uci_string) <= 4:
-            return uci_string[0] + str(9 - int(uci_string[1])) + uci_string[2] + str(9 - int(uci_string[3]))
-        return uci_string[0] + str(9 - int(uci_string[1])) + uci_string[2] + str(9 - int(uci_string[3])) + \
-            uci_string[4]
+        del n_batches
+        n_batches = ray.get(n_batches_ref)
+        # print("done")
+        del n_batches_ref
+        n_batches_ref = [generator.get_next.remote() for _ in range(batch_size)]
+        Xs = []
+        Es = []
+        Ys = []
+        for i in range(batch_size):
+            for j in range(batch_size):
+                x, y = n_batches[j]
+                Xs.append(x[i][:, :, :-2])
+                Es.append(x[i][:, :, -2:])
+                Ys.append(y[i])
+            Xs = np.array(Xs)
+            Ys = np.array(Ys)
+            Es = np.array(Es)
+            yield [Xs, Es], np.array(Ys)
+            total_yields += 1
+            Xs = []
+            Ys = []
+            Es = []
 
 
-print("Number of unique tokens: ", len(policy_index))
+def generator_uniform2(pgn, batch_size):
+    generator = RemoteWorker.remote(batch_size, pgn)
+    n_batches_ref = [generator.get_next.remote()]
+    n_batches = []
+    total_yields = 0
+    print(f"generating first {batch_size} batches")
+    while True:
+        del n_batches
+        n_batches = ray.get(n_batches_ref)
+        # print("done")
+        del n_batches_ref
+        n_batches_ref = [generator.get_next.remote()]
+
+        x, y = n_batches[0]
+        Xs = x[:, :, :, :-2]
+        Es = x[:, :, :, -2:]
+        Ys = y
+
+        yield [Xs, Es], np.array(Ys)
+        total_yields += 1
 
 
-if __name__ == "__main__":
-    modulator = PolicyIndex()
-    from data_gen import generate_batch
+class data_gen():
+    def __init__(self, params):
+        self.params = params
+        batch_size = params.get('batch_size')
+        pgn = params.get('path_pgn')
+        ray.init(object_store_memory=6 * 10 ** 9)
+        self.gen = generator_uniform2(pgn, batch_size)
+        self.out_channels = 102
+
+    def get_batch(self):
+        return next(self.gen)
+
+@ray.remote(num_cpus=1)
+class RemoteWorker(object):
+    def __init__(self, batch_size, in_pgn):
+        self.gen = generate_batch_dir(batch_size, in_pgn)
+
+    def get_next(self):
+        return next(self.gen)
+
+
+if __name__ == '__main__':
     one_pgn_iterator = generate_batch(1024, '/home/antoine/Bureau/3A/3A_RL/ChessRL/pgn_data/lichess_elite_2024-01.pgn')
     for i in range(10000000):
         print(i)
         x, y = next(one_pgn_iterator)
-        indexes = np.where(y == 1.)[1]
-        tokens = modulator.policy_index[indexes]
+        indexes = np.where(y==1.)[1]
 
+    # test()
