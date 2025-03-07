@@ -3,10 +3,10 @@ import json
 import chess
 import torch
 from models.bt4 import BT4
-from vocab import PolicyIndex
+from data_process.vocab import PolicyIndex
 
 if __name__ == '__main__':
-    dir = "../models_saves/model_1/"
+    dir = "./src/models_saves/model_1/"
     weights_path = dir + "model.pth"
     config_path = dir + "config.json"
 

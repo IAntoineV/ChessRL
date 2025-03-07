@@ -7,8 +7,8 @@ import numpy as np
 import torch
 from attr import dataclass
 
-from fen_encoder import fen_to_tensor
-from vocab import policy_index
+from data_process.fen_encoder import fen_to_tensor
+from data_process.vocab import policy_index
 
 from game_sampler import linear_augmentation_sampler, order_and_compute_deltas
 @dataclass
