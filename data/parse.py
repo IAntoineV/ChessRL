@@ -151,7 +151,9 @@ def dir_iterator_fen_move(dir_path,config:ParsingConfigFenMove=None):
         import warnings
         warnings.warn("PGN processing without config given, basic one used...")
         config = ParsingConfigFenMove()
-    for pgn in os.listdir(dir_path):
+    all_files = os.listdir(dir_path)
+    print("pgns : ", all_files)
+    for pgn in all_files:
         print(pgn)
         pgn_path = os.path.join(dir_path,pgn)
         gen = fen_move_tuple_generator(pgn_path,config)
