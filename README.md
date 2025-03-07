@@ -11,4 +11,6 @@ We have two goals :
 You should download strong player games from : https://database.nikonoel.fr/
 
 You can download also pgn data from lichess.
+### Installation
+- Replace the string in `.env copy` by the path to the compiler script of stockfish and rename the file as simply `.env`
 

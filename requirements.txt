@@ -1,0 +1,4 @@
+attrs
+chess
+gymnasium
+python-dotenv
