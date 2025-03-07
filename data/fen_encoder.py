@@ -4,11 +4,6 @@ import numpy as np
 import torch
 def fen_to_tensor(fen: str):
     board = chess.Board(fen)
-
-    if board.turn==chess.BLACK:
-        board = board.mirror()
-        board.turn = chess.BLACK
-
     P = 19  # 12 planes for pieces + 1 for side to play + 1 for en passant + 4 for castling + 1 for 50-move rule
     tensor = np.zeros((8, 8, P), dtype=np.float32)
     
