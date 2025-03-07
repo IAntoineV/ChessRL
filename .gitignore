@@ -2,3 +2,4 @@ __pycache__
 stockfish
 venv
 .env
+*.pth
