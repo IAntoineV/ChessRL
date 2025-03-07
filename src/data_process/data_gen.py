@@ -7,7 +7,7 @@ import ray
 import time
 import codecs
 import os
-from vocab import policy_index
+from data_process.vocab import policy_index
 dic_piece = {"P": 0, "N": 1, "B": 2, "R": 3, "Q": 4, "K": 5, "p": 6, "n": 7, "b": 8, "r": 9, "q": 10, "k": 11}
 params = (3.781083215802374, 355.0827163803461, 1421.9764397854142)
 
