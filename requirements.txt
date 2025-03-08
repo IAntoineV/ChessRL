@@ -3,3 +3,4 @@ chess
 gymnasium
 python-dotenv
 ray
+torch
