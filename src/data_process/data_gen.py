@@ -79,7 +79,8 @@ def generate_batch(batch_size, in_pgn):
                     elo = 1500
                 # if len(moves)>=11 and elo>=1100 and random.random() < uniform_density()/(weibull_min.pdf(elo,3.781083215802374, 355.0827163803461, 1421.9764397854142)):
                 if len(moves) >= 11 and elo >= 2200 and 'FEN' not in pgn.headers.keys() and '960' not in pgn.headers[
-                    'Event'] and 'Odds' not in pgn.headers['Event'] and 'house' not in pgn.headers['Event']:
+                    'Event'] and 'Odds' not in pgn.headers['Event'] and 'house' not in pgn.headers['Event']: # Make sure
+                    # the game is classic game with at least 11 moves and 2200 elo in the game.
                     del start_index
                     start_index = random.randint(10, len(moves) - 1)
                     max_index = min(150, len(moves) - 1)
@@ -92,18 +93,19 @@ def generate_batch(batch_size, in_pgn):
 
                     for i, move in enumerate(moves[:start_index]):
                         del xs, ys
-                        xs, ys = get_board_data(pgn, board, move, i)
+                        xs, ys = get_board_data(pgn, board, move, i) # get white repr of board
                         if (start_index - i) % 2 == 0:
                             x_start.append(xs)
                         else:
-                            x_start.append(swap_side(xs))
+                            x_start.append(swap_side(xs)) # We flip side to retransform black from white repr to black repr
 
-                    x_start = x_start[start_index - (history):]
-                    x_start = np.concatenate([x[:, :, :12] for x in x_start], axis=-1)
+                    x_start = x_start[start_index - (history):] # Keep only the last "history" board representation.
+                    x_start = np.concatenate([x[:, :, :12] for x in x_start], axis=-1) # We only keep board representation and
+                    # take away (castling_rights, en_passant_right, color, TC, elo) from each history board
                     for i, move in enumerate(moves[start_index:max_index]):
 
                         if total_pos % batch_size == 0 and len(x) != 0:
-                            x = np.array(x, dtype=np.float32)
+                            x = np.array(x, dtype=np.float32) # shape (b, 8,8, 12*(len(history)+1)+6
                             y_true = np.array(y_true, dtype=np.float32)
                             yield (x, y_true)
 
@@ -118,16 +120,27 @@ def generate_batch(batch_size, in_pgn):
                         del xs, ys
                         xs, ys = get_board_data(pgn, board, move, start_index + i)
                         if i == 0:
-                            x.append(np.concatenate((x_start, xs), axis=-1))
+                            x.append(np.concatenate((x_start, xs), axis=-1)) # If we just extracted the pos,
+                            # we do not need to flip the beginning x_start.
                         else:
                             if len(x) == 0:
-                                x.append(np.concatenate((swap_side(last_x[:, :, 12:(history + 1) * 12]), xs), axis=-1))
+                                x.append(update_repr(last_x, xs, history=history))
                             else:
-                                x.append(np.concatenate((swap_side(x[-1][:, :, 12:(history + 1) * 12]), xs), axis=-1))
+                                x.append(update_repr(x[-1], xs, history=history))
                         y_true.append(ys)
                         total_pos += 1
 
 
+def update_repr(old_repr: np.ndarray, new_board_repr: np.ndarray, history=7):
+    """
+    Based on the last model input and the new board after opponent move, we flip the side of last representation (board history
+    of last 7 board + current board) and concat with the new representation (which is always given as if the board was white for the model)
+    :param old_repr:
+    :param new_board_repr:
+    :param history:
+    :return:
+    """
+    return np.concatenate((swap_side(old_repr[:, :, 12:(history + 1) * 12]), new_board_repr), axis=-1)
 def generate_batch_dir(batch_size, in_dir):
     for in_pgn in os.listdir(in_dir):
         print(in_pgn)
@@ -220,6 +233,7 @@ def get_board(elo, board, real_move, TC, move_number):
     one_hot_move = one_hot_move + lm
 
     del mirrored_board
+    # output of shape (8,8,18) and onehot : (1858,) containing 1 for the right move, -1 for illegal moves and 0 for legal moves.
     return np.concatenate((before, castling_rights, en_passant_right, color, TC, elo), axis=2), one_hot_move
 
 
@@ -241,7 +255,10 @@ def get_board_data(pgn, board, real_move, move_number):
     return get_board(elo, board, real_move, TC, move_number)
 
 
-def get_x_from_board(elo, board, TC):
+def get_x_from_board(elo, board, TC, with_lm_mask=True):
+    """
+    Output board representation and legal_move_mask
+    """
     # print(board.turn == chess.WHITE)
     if board.turn == chess.WHITE:
         color = 1
@@ -286,8 +303,19 @@ def get_x_from_board(elo, board, TC):
     en_passant_right = np.ones((8, 8, 1), dtype=np.float32)
     if not mirrored_board.has_pseudo_legal_en_passant():
         en_passant_right *= 0
+    if not with_lm_mask:
+        return np.concatenate((before, castling_rights, en_passant_right, color, TC, elo), axis=2)
 
-    return np.concatenate((before, castling_rights, en_passant_right, color, TC, elo), axis=2)
+    lm_mask = np.zeros(1858, dtype=np.float32)
+    for possible in board.legal_moves:
+        possible_str = possible.uci()
+        if possible_str[-1] != 'n':
+            lm_mask[policy_index.index(possible_str)] = 1
+        else:
+            lm_mask[policy_index.index(possible_str[:-1])] = 1
+
+
+    return np.concatenate((before, castling_rights, en_passant_right, color, TC, elo), axis=2), lm_mask
 
 
 def swap_side(array):
@@ -300,8 +328,8 @@ def swap_side(array):
     reordered = []
 
     for k in range(num_positions):
-        reordered.append(flipped[:, :, (12 * k) + 6:(12 * k) + 12])
-        reordered.append(flipped[:, :, (12 * k):(12 * k) + 6])
+        reordered.append(flipped[:, :, (12 * k) + 6:(12 * k) + 12]) # Black representation of pieces
+        reordered.append(flipped[:, :, (12 * k):(12 * k) + 6]) # White representation of pieces
 
     return np.concatenate(reordered, axis=-1)
 
