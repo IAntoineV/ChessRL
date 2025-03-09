@@ -5,7 +5,7 @@ import os
 import numpy as np
 import tqdm
 sys.path.append(os.getcwd())
-import attentions as attn
+import src.models.attentions as attn
 
 
 

@@ -277,7 +277,7 @@ class PolicyIndex:
                 number = int(token[1]) - 1
                 if board.turn==chess.BLACK:
                     number = 7-number
-                letter_int = ord(letter) - 61
+                letter_int = ord(letter) - 96
                 piece = board.piece_at(letter_int + 8 * number)
                 if piece is chess.PAWN:
                     # The move is a knight promotion
