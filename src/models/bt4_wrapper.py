@@ -1,6 +1,6 @@
 from typing_extensions import override
 from src.models.bt4 import EncoderLayer
-from src.models.bt4 import BT4
+from src.models.bt4 import BT4, LearnablePositionalEncoder
 import torch
 
 import torch.nn as nn
@@ -89,7 +89,7 @@ class BT4WrapperWEncodedLayer(BT4):
 
         h_fc1 = self.applyattn(policy_attn_logits, promotion_logits)
 
-        return h_fc1, policy_tokens, pos_enc
+        return h_fc1, policy_tokens
 
 
 class BT4PolicyValue(nn.Module):
@@ -104,7 +104,7 @@ class BT4PolicyValue(nn.Module):
 
         # Replace linear layers with MLP
         self.encoded_board_first_layer = MLP(self.bt4model.d_model, d_model_value, d_model_value, activation_fn)
-        self.encoded_pos_encoding_layer = MLP(self.bt4model.d_model, d_model_value, d_model_value, activation_fn)
+        self.pos_encoding = LearnablePositionalEncoder(d_model_value, 64)
 
         self.layers_value = nn.ModuleList([EncoderLayer(self.d_model_value, self.d_ff_value, self.num_layers_value)
                                            for _ in range(self.num_layers_value)])
@@ -114,11 +114,11 @@ class BT4PolicyValue(nn.Module):
     def forward(self, x_input):
         Xs = x_input[:, :, :, :-2]
         Es = x_input[:, :, :, -2:]
-        log_prob, encoded_board, pos_enc = self.bt4model(Xs, Es) # log_prob (1858,) log prob, encoded baord (b,64,bt4model.d_model)
+        log_prob, encoded_board = self.bt4model(Xs, Es) # log_prob (1858,) log prob, encoded baord (b,64,bt4model.d_model)
         x = self.encoded_board_first_layer(encoded_board)
-        pos_enc = self.encoded_pos_encoding_layer(pos_enc)
+        pos_encoding = self.pos_encoding()
         for i in range(self.num_layers_value):
-            x, _ = self.layers_value[i](x, pos_enc)
+            x, _ = self.layers_value[i](x, pos_encoding)
         encoded4value = self.last_linear(x)
         encoded4value = torch.nn.GELU()(encoded4value) # (b,64,encoded_dim)
         pulled_value = encoded4value.mean(dim=1)
