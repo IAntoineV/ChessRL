@@ -125,3 +125,26 @@ class BT4PolicyValue(nn.Module):
         value = self.value_linear(pulled_value)
 
         return log_prob, value
+
+
+if __name__=="__main__":
+    # Show how to load the wrapped version.
+    import json
+    import torch
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print("device : ", device)
+    elo = 2700
+    TC = "600"
+    history = 7
+    pgn_path = "../../pgn_data_example/pgn_example.pgn"
+
+    dir = "../../models_saves/model_1/"
+    weights_path = dir + "model.pth"
+    config_path = dir + "config.json"
+
+    config = json.load(open(config_path, "r"))
+    bt4_model = BT4WrapperWEncodedLayer(**config).to(device)
+    bt4_model.load_state_dict(torch.load(weights_path))
+    bt4_model.eval()
+    model = BT4PolicyValue(bt4_model, 200, 400, 2, 20, 200).to(device)
