@@ -8,3 +8,4 @@ class ChessBot(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def initialize_pos(self, list_moves):
+        pass
