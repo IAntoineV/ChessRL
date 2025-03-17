@@ -8,7 +8,6 @@ import os
 from gymnasium import spaces
 from data_process.vocab import policy_index, get_hash_table_vocab_to_index
 from data_process.fen_encoder import fen_to_tensor
-from dotenv import load_dotenv
 
 
 class ChessStockfishEnv(gym.Env):
