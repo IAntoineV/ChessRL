@@ -120,7 +120,7 @@ if __name__ == "__main__":
     print("Starting game: MCTS (White) vs Stockfish (Black)")
     while not board.is_game_over():
         if board.turn == chess.WHITE:
-            move, metrics = mcts.search(board, iterations=1000)
+            move, metrics = mcts.search(board, iterations=500)
             print("MCTS (White) chooses:", move)
         else:
             result = engine.play(board, chess.engine.Limit(depth=0))
