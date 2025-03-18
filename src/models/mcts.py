@@ -7,10 +7,11 @@ import random
 import time
 import sys
 import os
+
+sys.path.append(os.getcwd())
 from src.data_process.fen_encoder import fen_to_tensor
 from src.reward_train.custom_board_reward import evaluate_board
 
-sys.path.append(os.getcwd())
 
 
 def board_to_tensor(board: chess.Board) -> torch.Tensor:
@@ -87,10 +88,10 @@ class MCTS:
 
         for _ in range(iterations):
             node = root
-
             # Selection: Traverse tree until reaching a node that is not fully expanded.
-            while node.is_fully_expanded() and node.children:
+            while node.is_fully_expanded() and len(node.children)>0:
                 node = node.best_child(self.exploration_constant)
+
 
             # Expansion: Expand node if it's not terminal.
             if not node.is_fully_expanded():
@@ -127,11 +128,12 @@ class MCTS:
             rollout_board = board.copy()
             depth = 0
             while not rollout_board.is_game_over() and depth < max_depth:
+                if rollout_board.is_checkmate():
+                    return -10000.0 if rollout_board.turn == chess.WHITE else 10000.0  # Loss for White, Win for Black
+
                 moves = list(rollout_board.legal_moves)
                 if not moves:
                     break
                 rollout_board.push(random.choice(moves))
                 depth += 1
             return evaluate_board(rollout_board)
-
-    

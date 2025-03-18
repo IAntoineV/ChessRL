@@ -160,7 +160,7 @@ def evaluate_piece(piece: chess.Piece, square: chess.Square, endgame: bool) -> i
 
 def evaluate_board(board: chess.Board) -> float:
     if board.is_checkmate():
-        return -float('inf') if board.turn else float('inf')
+        return -10000.0 if board.turn else 10000.0
     if board.is_stalemate() or board.is_insufficient_material():
         return 0.0
     endgame = is_near_end_game(board)
