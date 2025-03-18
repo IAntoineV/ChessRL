@@ -8,6 +8,7 @@ import time
 import sys
 import os
 from src.data_process.fen_encoder import fen_to_tensor
+from src.reward_train.custom_board_reward import evaluate_board
 
 sys.path.append(os.getcwd())
 
@@ -131,31 +132,6 @@ class MCTS:
                     break
                 rollout_board.push(random.choice(moves))
                 depth += 1
-            return self.simple_evaluation(rollout_board)
+            return evaluate_board(rollout_board)
 
-    def simple_evaluation(self, board: chess.Board) -> float:
-        """
-        Evaluate the board on results if game is over or based on remaining material
-        """
-        if board.is_game_over():
-            result = board.result()
-            return 1.0 if result == "1-0" else (-1.0 if result == "0-1" else 0.0)
-        material = sum(self.piece_value(piece)
-                       for piece in board.piece_map().values())
-        # normalization by sum of piece values to get a value between -1 and 1
-        return material / 39.0
-
-    def piece_value(self, piece: chess.Piece) -> float:
-        """
-        Return the material value of a piece.
-        """
-        values = {
-            chess.PAWN: 1,
-            chess.KNIGHT: 3,
-            chess.BISHOP: 3,
-            chess.ROOK: 5,
-            chess.QUEEN: 9,
-            chess.KING: 0,
-        }
-        val = values[piece.piece_type]
-        return val if piece.color == chess.WHITE else -val
+    
