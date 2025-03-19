@@ -7,7 +7,7 @@ import ray
 import time
 import codecs
 import os
-from vocab import policy_index
+from src.data_process.vocab import policy_index
 dic_piece = {"P": 0, "N": 1, "B": 2, "R": 3, "Q": 4, "K": 5, "p": 6, "n": 7, "b": 8, "r": 9, "q": 10, "k": 11}
 params = (3.781083215802374, 355.0827163803461, 1421.9764397854142)
 
@@ -51,7 +51,7 @@ def board_to_input_data(board: chess.Board) -> np.ndarray:
     return np.array(input_data, dtype=np.float32)
 
 
-def generate_batch(batch_size, in_pgn):
+def generate_batch(batch_size, in_pgn, with_fen=False):
     total_pos = 0
     x = []
     y_true = []
@@ -64,6 +64,7 @@ def generate_batch(batch_size, in_pgn):
     x_start = []
     xs = []
     ys = []
+    L_fen = []
     # with codecs.open(in_pgn,'r',"ISO-8859-1") as f:
     with open(in_pgn, encoding="utf8") as f:
         while True:
@@ -98,6 +99,7 @@ def generate_batch(batch_size, in_pgn):
                             x_start.append(xs)
                         else:
                             x_start.append(swap_side(xs)) # We flip side to retransform black from white repr to black repr
+                        board.push(move)
 
                     x_start = x_start[start_index - (history):] # Keep only the last "history" board representation.
                     x_start = np.concatenate([x[:, :, :12] for x in x_start], axis=-1) # We only keep board representation and
@@ -107,7 +109,10 @@ def generate_batch(batch_size, in_pgn):
                         if total_pos % batch_size == 0 and len(x) != 0:
                             x = np.array(x, dtype=np.float32) # shape (b, 8,8, 12*(len(history)+1)+6
                             y_true = np.array(y_true, dtype=np.float32)
-                            yield (x, y_true)
+                            if with_fen:
+                                yield (x, y_true, L_fen)
+                            else:
+                                yield (x, y_true)
 
                             # reset variables
                             del last_x
@@ -116,6 +121,9 @@ def generate_batch(batch_size, in_pgn):
                             x = []
                             del y_true
                             y_true = []
+                            if with_fen:
+                                del L_fen
+                                L_fen = []
 
                         del xs, ys
                         xs, ys = get_board_data(pgn, board, move, start_index + i)
@@ -128,6 +136,8 @@ def generate_batch(batch_size, in_pgn):
                             else:
                                 x.append(update_repr(x[-1], xs, history=history))
                         y_true.append(ys)
+                        L_fen.append(board.fen())
+                        board.push(move)
                         total_pos += 1
 
 
@@ -141,10 +151,10 @@ def update_repr(old_repr: np.ndarray, new_board_repr: np.ndarray, history=7):
     :return:
     """
     return np.concatenate((swap_side(old_repr[:, :, 12:(history + 1) * 12]), new_board_repr), axis=-1)
-def generate_batch_dir(batch_size, in_dir):
+def generate_batch_dir(batch_size, in_dir, with_fen=False):
     for in_pgn in os.listdir(in_dir):
         print(in_pgn)
-        gen = generate_batch(batch_size, os.path.join(in_dir, in_pgn))
+        gen = generate_batch(batch_size, os.path.join(in_dir, in_pgn), with_fen=with_fen)
         while True:
             try:
                 yield next(gen)
@@ -163,7 +173,7 @@ def mirror_uci_string(uci_string):
         return uci_string[0] + str(9 - int(uci_string[1])) + uci_string[2] + str(9 - int(uci_string[3])) + uci_string[4]
 
 
-def get_board(elo, board, real_move, TC, move_number):
+def get_board(elo, board:chess.Board, real_move, TC, move_number):
     if board.turn == chess.WHITE:
         color = 1
         mirrored_board = board.copy()
@@ -227,8 +237,6 @@ def get_board(elo, board, real_move, TC, move_number):
     one_hot_move = np.zeros(1858, dtype=np.float32)
     one_hot_move[move_id] = 1
 
-    board.push(real_move)
-    mirrored_board.push(move)
 
     one_hot_move = one_hot_move + lm
 
@@ -578,8 +586,8 @@ def generator_uniform(pgn, batch_size):
             Es = []
 
 
-def generator_uniform2(pgn, batch_size):
-    generator = RemoteWorker.remote(batch_size, pgn)
+def generator_uniform2(pgn, batch_size, with_fen=False):
+    generator = RemoteWorker.remote(batch_size, pgn, with_fen=with_fen)
     n_batches_ref = [generator.get_next.remote()]
     n_batches = []
     total_yields = 0
@@ -590,13 +598,17 @@ def generator_uniform2(pgn, batch_size):
         # print("done")
         del n_batches_ref
         n_batches_ref = [generator.get_next.remote()]
-
-        x, y = n_batches[0]
+        if with_fen:
+            x, y,L_fen = n_batches[0]
+        else:
+            x, y = n_batches[0]
         Xs = x[:, :, :, :-2]
         Es = x[:, :, :, -2:]
         Ys = y
-
-        yield [Xs, Es], np.array(Ys)
+        if with_fen:
+            yield [Xs, Es], Ys, L_fen
+        else:
+            yield [Xs, Es], np.array(Ys)
         total_yields += 1
 
 
@@ -606,7 +618,11 @@ class data_gen():
         batch_size = params.get('batch_size')
         pgn = params.get('path_pgn')
         ray.init(object_store_memory=6 * 10 ** 9)
-        self.gen = generator_uniform2(pgn, batch_size)
+        self.with_fen = False
+        if "with_fen" in params:
+            if params['with_fen']:
+                self.with_fen = True
+        self.gen = generator_uniform2(pgn, batch_size, with_fen = self.with_fen)
         self.out_channels = 102
 
     def get_batch(self):
@@ -614,8 +630,8 @@ class data_gen():
 
 @ray.remote(num_cpus=1)
 class RemoteWorker(object):
-    def __init__(self, batch_size, in_pgn):
-        self.gen = generate_batch_dir(batch_size, in_pgn)
+    def __init__(self, batch_size, in_pgn, with_fen=False):
+        self.gen = generate_batch_dir(batch_size, in_pgn, with_fen=with_fen)
 
     def get_next(self):
         return next(self.gen)

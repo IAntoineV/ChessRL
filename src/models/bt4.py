@@ -169,6 +169,16 @@ class EncoderLayer(torch.nn.Module):
         return y, loss
 
 
+class LearnablePositionalEncoder(torch.nn.Module):
+    def __init__(self, d_model, seq_len):
+        super(LearnablePositionalEncoder, self).__init__()
+        # Create a learnable positional encoding matrix for the fixed sequence length
+        self.position = torch.nn.Parameter(torch.randn(seq_len, d_model))
+
+    def forward(self):
+        pos_encodings = self.position.unsqueeze(0)
+        return pos_encodings
+
 class AbsolutePositionalEncoder(torch.nn.Module):
     def __init__(self, d_model):
         super(AbsolutePositionalEncoder, self).__init__()

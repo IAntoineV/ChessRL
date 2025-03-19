@@ -87,7 +87,6 @@ if __name__ == '__main__':
             print("token :", token, " move : ", uci_ai)
             uci_ai = chess.Move.from_uci(uci_ai)
             board.push(uci_ai)
-
             xs, _ = get_x_from_board(elo, board, TC)
             x_repr = update_repr(x_repr[0], xs, history=history)[np.newaxis]
             print(board.unicode())
