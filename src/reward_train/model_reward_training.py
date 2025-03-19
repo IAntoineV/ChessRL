@@ -110,7 +110,12 @@ class RewardModel:
         """ Get rewards from Stockfish in parallel using Ray actors."""
         b, G = move_indexes.shape
         tasks = []
-
+        board_task= []
+        for batch_idx, board in enumerate(boards):
+            board_to_eval = board.copy()
+            worker = self.workers[batch_idx % self.num_engines]
+            board_task.append(worker.evaluate_position.remote(board_to_eval.fen()))
+        eval_board = np.array(ray.get(board_task)).reshape(b, 1)
         for batch_idx in range(b):
             board = boards[batch_idx]
             for sample_idx in range(G):
@@ -127,24 +132,26 @@ class RewardModel:
                 worker = self.workers[(batch_idx * G + sample_idx) % self.num_engines]
                 tasks.append(worker.evaluate_position.remote(board_for_move.fen()))
 
-        rewards = ray.get(tasks)
-        return np.array(rewards).reshape(b, G)
+        evals = ray.get(tasks)
+        evals = np.array(evals).reshape(b, G)
+        rewards = evals - eval_board
+        return rewards
 
 
 ################### PARAMETERS
-num_steps = 1000
+num_steps = 10
 num_epochs=1000
 G = 16
-batch_size=64
+batch_size=128
 stockfish_path = "../../stockfish/stockfish-ubuntu-x86-64-avx2"
 depth = 15
 time = 1
-epsilon_grpo = 0.95
-num_engines = 8
-kl_coef = 1e-3
+epsilon_grpo = 0.2
+num_engines = 16
+kl_coef = 1
 ###################
 
-
+model.train()
 num_params = sum([p.numel() for p in model.parameters()])
 
 print("nb params : ", num_params)
@@ -152,7 +159,7 @@ print("nb params : ", num_params)
 from src.data_process.data_gen import data_gen
 
 ds = data_gen({'batch_size': batch_size, 'path_pgn': '/home/antoine/Bureau/3A/3A_RL/ChessRL/pgn_data/', "with_fen": True})
-opt = torch.optim.NAdam(model.parameters(), lr=1e-4)
+opt = torch.optim.NAdam(model.parameters(), lr=5e-5)
 reward_model = RewardModel(stockfish_path, depth, time, num_engines=num_engines)
 
 import wandb
@@ -189,10 +196,11 @@ for epoch in range(num_epochs):
             proba_ref = torch.softmax(logits_ref, dim=-1)
             masked_proba = proba_ref * legal_mask  # Zero out illegal moves
             masked_proba /= masked_proba.sum(dim=-1, keepdim=True)
-            indexes_evaluated = torch.multinomial(masked_proba, num_samples=G, replacement=True)
+            indexes_evaluated = torch.multinomial(masked_proba, num_samples=G, replacement=False)
             boards = list(map(lambda x : chess.Board(x), L_fen))
             rewards= reward_model.get_rewards(indexes_evaluated, boards, policy_manager)
-            loss,infos = MoveTraining.compute_loss_grpo(logits, logits_ref, indexes_evaluated, rewards, epsilon=epsilon_grpo)
+            loss,infos = MoveTraining.compute_loss_grpo(logits, logits_ref, indexes_evaluated, rewards,
+                                                        epsilon=epsilon_grpo, kl_coef=kl_coef)
 
         opt.zero_grad()
 
@@ -214,10 +222,11 @@ for epoch in range(num_epochs):
 
             epoch_loss += loss.item()
             epoch_accuracy += acc.item()
-        mean_reward = rewards.mean().item()
-        epoch_reward+= mean_reward
+        mean_reward_gain = infos["reward_bar_model"] - infos["reward_bar_model_ref"]
+
+        epoch_reward+= mean_reward_gain
         if step % 1 == 0:
-            logs = {"accuracy": acc.item(), "loss": loss.item(), "legal_prob": legal_prob, "mean_reward":mean_reward}
+            logs = {"accuracy": acc.item(), "loss": loss.item(), "legal_prob": legal_prob}
             logs.update(infos)
             total_step = num_steps * epoch + step
             wandb.log(
@@ -233,8 +242,11 @@ for epoch in range(num_epochs):
     print(f"epoch : {epoch}, loss: {epoch_loss}, accuracy: {epoch_accuracy}, reward: {epoch_reward}")
 
     # Save the model if it has the best accuracy or loss so far
-    if epoch_reward > best_reward :
+    if epoch_reward > 0 :
         best_reward = epoch_reward
         best_loss = epoch_loss
-        torch.save(model.state_dict(), f'grpo_best_model.pth')
-        print(f"Model saved at epoch {epoch} with accuracy {best_accuracy} and loss {best_loss}")
+        torch.save(model.state_dict(), f'grpo_best_model_{epoch}.pth')
+        print(f"Model saved at epoch {epoch} with epoch reward gain {epoch_reward}")
+        model_ref = deepcopy(model)
+        for param in model_ref.parameters():
+            param.requires_grad = False

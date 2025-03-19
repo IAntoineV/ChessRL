@@ -29,7 +29,7 @@ class MoveTraining:
         return loss, {}
 
     @staticmethod
-    def compute_loss_grpo(policy, policy_ref, indexes_evaluated, rewards, epsilon=0.2, stable_eps = 1e-6, kl_coef=e1-5):
+    def compute_loss_grpo(policy, policy_ref, indexes_evaluated, rewards, epsilon=0.2, stable_eps = 1e-2, kl_coef=1e-4):
         """
             :param policy: logits of shape (b,policy_length)
             :param policy_ref: logits of shape (b,policy_length)
@@ -54,15 +54,23 @@ class MoveTraining:
         clipped_ratio = torch.clamp(ratio, 1.0 - epsilon, 1.0 + epsilon)
         surrogate = torch.min(ratio * advantage, clipped_ratio * advantage)
 
-        kl_term = torch.kl_div()
-        loss = -surrogate.mean()
+        kl_term = torch.kl_div(current_log_probs, ref_log_probs, log_target=True).sum(dim=-1).mean()
+        loss = torch.clip(-surrogate.mean() + kl_coef*kl_term, -1,1)
 
+        sampled_proba = torch.softmax(current_logp, dim=-1)
+        sampled_proba_ref = torch.softmax(ref_logp, dim=-1)
+
+        reward_barycentered = (sampled_proba * torch.from_numpy(rewards).to(device=sampled_proba.device)).sum(dim=-1)
+        reward_barycentered_ref = (sampled_proba_ref * torch.from_numpy(rewards).to(device=sampled_proba_ref.device)).sum(dim=-1)
         # Diagnostic metrics
         info = {
             "avg_ratio": ratio.mean().item(),
             "clip_frac": ((ratio < (1 - epsilon)) | (ratio > (1 + epsilon))).float().mean().item(),
             "avg_logp_diff": ((2*(advantage>0)-1) * log_ratio).mean().item(),
-            "surrogate": surrogate.mean().item()
+            "surrogate": surrogate.mean().item(),
+            "KL_regularization": kl_term.mean().item(),
+            "reward_bar_model": reward_barycentered.mean().item(),
+            "reward_bar_model_ref": reward_barycentered_ref.mean().item(),
         }
 
         return loss, info

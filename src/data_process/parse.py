@@ -1,16 +1,15 @@
 import os
-from symtable import Function
-
+import random
 import chess
 import chess.pgn
 import numpy as np
 import torch
 from attr import dataclass
 
-from fen_encoder import fen_to_tensor
-from vocab import policy_index
+from src.data_process.fen_encoder import fen_to_tensor
+from src.data_process.vocab import policy_index
 
-from game_sampler import linear_augmentation_sampler, order_and_compute_deltas
+from src.data_process.game_sampler import linear_augmentation_sampler, order_and_compute_deltas
 @dataclass
 class ParsingConfig:
     batch_size = 32
@@ -144,6 +143,37 @@ def fen_move_tuple_generator(pgn_path, config:ParsingConfigFenMove):
                     fen_array = []
                     moves_array = []
 
+
+def list_move_generator(pgn_path, min_length=10, elo_min=2200):
+    with open(pgn_path, "r") as f:
+        fen_array = []
+        moves_array = []
+        while True:
+            pgn = chess.pgn.read_game(f)
+            if pgn.next()==None:
+                continue
+            elo = min(int(pgn.headers["WhiteElo"]),int(pgn.headers["BlackElo"]))
+            if elo <= elo_min or 'FEN' in pgn.headers.keys() or '960' in pgn.headers['Event'] or 'Odds' in pgn.headers['Event'] or 'house' in pgn.headers['Event']:
+                continue
+            moves = [move for move in pgn.mainline_moves()]
+            if len(moves) < min_length:
+                continue
+            length = random.randint(10, len(moves) - 1)
+            yield moves[:length]
+
+
+def dir_decorator(generator, dir_path, *args, **kwargs):
+    all_files = os.listdir(dir_path)
+    print("pgns : ", all_files)
+    for pgn in all_files:
+        print(pgn)
+        pgn_path = os.path.join(dir_path, pgn)
+        gen = generator(pgn_path, *args, **kwargs)
+        while True:
+            try:
+                yield next(gen)
+            except:
+                break
 
 
 def dir_iterator_fen_move(dir_path,config:ParsingConfigFenMove=None):
