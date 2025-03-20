@@ -1,8 +1,7 @@
 
 
 
-
-from src.model_evaluation.ChessBot import ChessBot
+from src.model_evaluation.ChessBot import ChessBot, MCTSChessBot, AlphaBetaChessBot
 import chess
 import chess.pgn
 
@@ -96,15 +95,21 @@ class ChessTournament:
 if __name__ == "__main__":
     from src.model_evaluation.toy_bot import  RandomBot
     from src.data_process.parse import dir_decorator, list_move_generator
-    generator = dir_decorator(list_move_generator, "../../pgn_data")
+    generator = dir_decorator(list_move_generator, "../../pgn_data_example")
     def gen():
         for list_move in generator:
             yield [move.uci() for move in list_move]
 
 
     generator_listmove = gen()
-    bot_names = ["RandomBot1", "RandomBot2"]
-    bots = [ RandomBot(), RandomBot()]
-    tournament = ChessTournament(bot_names, bots, generator_listmove, games_per_match=10)
+    # bot_names = ["RandomBot1", "RandomBot2"]
+    # bots = [ RandomBot(), RandomBot()]
+    bot_names = ["RandomBot", "MCTSBot"]
+    bots = [ RandomBot(), MCTSChessBot(iterations=1000)]
+
+    # bot_names = ["RandomBot", "AlphaBetaBot"]
+    # bots = [ RandomBot(), AlphaBetaChessBot(search_depth=4)]
+
+    tournament = ChessTournament(bot_names, bots, generator_listmove, games_per_match=2)
     tournament.run_1v1_matches()
     tournament.display_results()

@@ -35,6 +35,7 @@ class MCTSChessBot(ChessBot):
         self.iterations = iterations
 
     def initialize_pos(self, list_moves: list):
+        self.board = chess.Board()
         for move in list_moves:
             self.board.push_uci(move)
 
@@ -44,8 +45,8 @@ class MCTSChessBot(ChessBot):
         best_move, metrics = self.mcts.search(
             self.board, iterations=self.iterations)
         self.board.push(best_move)
-        print("MCTS metrics:", metrics)
-        print("best move:", best_move)
+        # print("MCTS metrics:", metrics)
+        # print("best move:", best_move)
         return best_move.uci()
 
 
@@ -55,6 +56,7 @@ class AlphaBetaChessBot(ChessBot):
         self.search_depth = search_depth
 
     def initialize_pos(self, list_moves: list):
+        self.board = chess.Board()
         for move in list_moves:
             self.board.push_uci(move)
 
