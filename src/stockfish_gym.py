@@ -203,6 +203,7 @@ class ChessEnv(ChessStockfishEnv):
 
         self.hist = hist
         self.TC = TC
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # Create opponent engine
         self.opponent_engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
@@ -226,6 +227,8 @@ class ChessEnv(ChessStockfishEnv):
             shape=(1, 8, 8, 104),
             dtype=np.float32,
         )
+
+    def reset(self):
         pgn_path = "./pgn_data_example/pgn_example.pgn"
         with open(pgn_path, encoding="utf8") as f:
             # load game
@@ -240,8 +243,11 @@ class ChessEnv(ChessStockfishEnv):
         self.board = chess.Board()
         for move in moves:
             self.board.push(move)
-        xs, lm_mask = get_x_from_board(self.reward_eval_elo, self.board, TC)
-        self.state = np.concatenate((x_start, xs), axis=-1)[np.newaxis]
+        xs, lm_mask = get_x_from_board(self.reward_eval_elo, self.board, self.TC)
+        self.state = torch.tensor(
+            np.concatenate((x_start, xs), axis=-1)[np.newaxis]
+        ).to(self.device)
+        return self.state
 
     def step(self, action):
 
@@ -251,7 +257,11 @@ class ChessEnv(ChessStockfishEnv):
         if move is None or move not in self.current_legal_moves:
             infos["error"] = "Invalid move"
             xs, _ = get_x_from_board(self.reward_eval_elo, self.board, self.TC)
-            self.state = update_repr(self.state[0], xs, history=self.hist)[np.newaxis]
+            self.state = torch.tensor(
+                update_repr(
+                    self.state.detach().cpu().numpy()[0], xs, history=self.hist
+                )[np.newaxis]
+            ).to(self.device)
             return self.state, -20, True, True, infos
 
         # Apply player move
@@ -264,7 +274,11 @@ class ChessEnv(ChessStockfishEnv):
             )  # Player caused the game to end
             infos["result"] = result[1]["result"]
             xs, _ = get_x_from_board(self.reward_eval_elo, self.board, self.TC)
-            self.state = update_repr(self.state[0], xs, history=self.hist)[np.newaxis]
+            self.state = torch.tensor(
+                update_repr(
+                    self.state.detach().cpu().numpy()[0], xs, history=self.hist
+                )[np.newaxis]
+            ).to(self.device)
             return self.state, result[0], True, False, infos
 
         # Get Stockfish move
@@ -274,7 +288,11 @@ class ChessEnv(ChessStockfishEnv):
         except chess.engine.EngineTerminatedError:
             infos["error"] = "Engine crashed"
             xs, _ = get_x_from_board(self.reward_eval_elo, self.board, self.TC)
-            self.state = update_repr(self.state[0], xs, history=self.hist)[np.newaxis]
+            self.state = torch.tensor(
+                update_repr(
+                    self.state.detach().cpu().numpy()[0], xs, history=self.hist
+                )[np.newaxis]
+            ).to(self.device)
             return self.state, 0, True, True, infos
 
         # Check if game ended after Stockfish move
@@ -284,7 +302,11 @@ class ChessEnv(ChessStockfishEnv):
             )  # Stockfish caused the game to end
             infos["result"] = result[1]["result"]
             xs, _ = get_x_from_board(self.reward_eval_elo, self.board, self.TC)
-            self.state = update_repr(self.state[0], xs, history=self.hist)[np.newaxis]
+            self.state = torch.tensor(
+                update_repr(
+                    self.state.detach().cpu().numpy()[0], xs, history=self.hist
+                )[np.newaxis]
+            ).to(self.device)
             return self.state, result[0], True, False, infos
 
         # Calculate reward using evaluation engine
@@ -310,7 +332,11 @@ class ChessEnv(ChessStockfishEnv):
             infos["result"] = result[1]["result"]
             reward = result[0]
         xs, _ = get_x_from_board(self.reward_eval_elo, self.board, self.TC)
-        self.state = update_repr(self.state[0], xs, history=self.hist)[np.newaxis]
+        self.state = torch.tensor(
+            update_repr(self.state.detach().cpu().numpy()[0], xs, history=self.hist)[
+                np.newaxis
+            ]
+        ).to(self.device)
         return self.state, reward, done, False, infos
 
 
