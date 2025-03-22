@@ -1,9 +1,8 @@
 # vocab consists of
 import chess
+import chess.pgn
 
-
-
-dictionary_decoder = [
+all_moves = [
     "a1b1", "a1c1", "a1d1", "a1e1", "a1f1", "a1g1", "a1h1", "a1a2", "a1b2",
     "a1c2", "a1a3", "a1b3", "a1c3", "a1a4", "a1d4", "a1a5", "a1e5", "a1a6",
     "a1f6", "a1a7", "a1g7", "a1a8", "a1h8", "b1a1", "b1c1", "b1d1", "b1e1",
@@ -236,35 +235,37 @@ dictionary_decoder = [
 ]  # UCI format
 
 
-print("Number of unique tokens: ", len(dictionary_decoder))
+print("Number of unique tokens: ", len(all_moves))
 
 import os
-def generator_decoder_dir(dir_path):
+def generator_decoder_dir(dir_path, max_seq_length=256):
     for pgn in os.listdir(dir_path):
-        print(pgn)
+        # print(pgn)
         pgn_path = os.path.join(dir_path,pgn)
+        gen = generator_decoder(pgn_path, max_seq_length=max_seq_length)
         while True:
             try:
-                yield next(generator_decoder(pgn_path))
+                yield next(gen)
             except:
                 break
 
-def generator_decoder(pgn_path):
+def generator_decoder(pgn_path, max_seq_length=256):
     with open(pgn_path, encoding="utf8") as f:
         while True:
             # load game
-            del pgn
+            # del pgn
             pgn = chess.pgn.read_game(f)
             if pgn.next() != None:
-                del moves
+                # del moves
                 moves = [move.uci() for move in pgn.mainline_moves()]
                 try:
                     elo = min(int(pgn.headers["WhiteElo"]), int(pgn.headers["BlackElo"]))
                 except:
                     elo = 1500
                 if elo >= 2200 and 'FEN' not in pgn.headers.keys() and '960' not in pgn.headers[
-                    'Event'] and 'Odds' not in pgn.headers['Event'] and 'house' not in pgn.headers['Event']: # Make sure
-                    # the game is classic game with at least 11 moves and 2200 elo in the game.
+                    'Event'] and 'Odds' not in pgn.headers['Event'] and 'house' not in pgn.headers['Event'] and len(moves)<=max_seq_length: # Make sure
+                #     # the game is classic game with at least 11 moves and 2200 elo in the game.
+                    print(len(moves))
                     yield moves
 
 
