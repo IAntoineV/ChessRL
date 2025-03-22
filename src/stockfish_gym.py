@@ -247,10 +247,10 @@ class ChessEnv(ChessStockfishEnv):
         self.state = torch.tensor(
             np.concatenate((x_start, xs), axis=-1)[np.newaxis]
         ).to(self.device)
+        self.current_legal_moves = list(self.board.legal_moves)
         return self.state
 
     def step(self, action):
-
         infos = {}
         # Convert action to chess move
         move = self._action_to_move(action)
@@ -262,7 +262,7 @@ class ChessEnv(ChessStockfishEnv):
                     self.state.detach().cpu().numpy()[0], xs, history=self.hist
                 )[np.newaxis]
             ).to(self.device)
-            return self.state, -20, True, True, infos
+            return self.state, -20, False, False, infos
 
         # Apply player move
         self.board.push(move)
@@ -337,6 +337,7 @@ class ChessEnv(ChessStockfishEnv):
                 np.newaxis
             ]
         ).to(self.device)
+        infos["move"] = move
         return self.state, reward, done, False, infos
 
 

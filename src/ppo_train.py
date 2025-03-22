@@ -1,4 +1,5 @@
 import torch
+from collections import defaultdict
 
 
 def ppo_loss(
@@ -6,24 +7,15 @@ def ppo_loss(
     old_values,
     advantages,
     states,
-    actions,
     returns,
     model,
     optimizer,
     epochs,
     clip_ratio,
 ):
-    def compute_loss(log_probs, values, actions, returns, old_log_probs, advantages):
-        # Compute probabilities for actions taken
-        action_probs = torch.gather(
-            torch.exp(log_probs), 1, actions.unsqueeze(1)
-        ).squeeze(1)
-        old_action_probs = torch.gather(
-            torch.exp(old_log_probs), 1, actions.unsqueeze(1)
-        ).squeeze(1)
-
+    def compute_loss(log_probs, values, returns, old_log_probs, advantages):
         # Compute ratio and apply PPO clipping
-        ratio = action_probs / (old_action_probs + 1e-10)
+        ratio = torch.exp(log_probs) / (torch.exp(old_log_probs) + 1e-10)
         clipped_ratio = torch.clamp(ratio, 1 - clip_ratio, 1 + clip_ratio)
         policy_loss = -torch.mean(
             torch.min(ratio * advantages, clipped_ratio * advantages)
@@ -44,15 +36,15 @@ def ppo_loss(
         return total_loss
 
     for _ in range(epochs):
-        log_probs, values = model(states)
-        loss = compute_loss(
-            log_probs, values, actions, returns, old_log_probs, advantages
-        )
+        for i, state in enumerate(states):
+            log_prob, values = model(state)
+            loss = compute_loss(
+                log_prob, values, returns, old_log_probs[i], advantages[i]
+            )
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-
     return loss
 
 
@@ -69,26 +61,27 @@ def train_ppo(
     optimizer,
     device,
     max_episodes=1000,
-    max_steps_per_episode=1000,
+    max_steps_per_episode=100,
     clip_ratio=0.8,
     gamma=0.3,
-    epochs=4,
+    epochs=100,
 ):
     def discount_rewards(rewards, gamma):
         discounted_sum = 0
         returns = []
         for r in reversed(rewards):
             discounted_sum = r + gamma * discounted_sum
-            returns.insert(0, discounted_sum)
+            returns.append(discounted_sum)
+        returns.reverse()
         return returns
 
     for episode in range(max_episodes):
-        states, actions, rewards, values = [], [], [], []
+        states, actions, rewards, values, old_log_probs = [], [], [], [], []
 
         # For Gym versions that return a tuple from reset()
         state = env.reset()
-
         done = False
+        list_infos = defaultdict(lambda: 0)
         step = 0
         while not done and step < max_steps_per_episode:
             log_probs, value = policy_net(state)
@@ -96,13 +89,16 @@ def train_ppo(
             action = torch.multinomial(action_probs, 1).item()
 
             next_state, reward, terminated, truncated, infos = env.step(action)
-            print(infos)
+            for key in infos.keys():
+                list_infos[key] += 1 / max_steps_per_episode
+
             done = terminated or truncated
             # Handle new Gym API if reset returns a tuple
 
             states.append(state)
             actions.append(action)
             rewards.append(reward)
+            old_log_probs.append(log_probs.detach())
             values.append(value.detach())
 
             state = next_state
@@ -111,21 +107,16 @@ def train_ppo(
         # Compute discounted rewards and advantages
         returns_batch = discount_rewards(rewards, gamma)
         returns_batch = torch.tensor(returns_batch, dtype=torch.float32, device=device)
-
-        states = torch.cat(states, dim=0)
+        values = torch.tensor(values, dtype=torch.float32, device=device)
         actions = torch.tensor(actions, dtype=torch.int64, device=device)
-        values = torch.cat(values).squeeze(-1)
 
         advantages = get_advantages(returns_batch, values)
-        old_log_prob, _ = policy_net(states)
-        old_log_prob = old_log_prob.detach()
 
         loss = ppo_loss(
-            old_log_prob,
+            old_log_probs,
             values,
             advantages,
             states,
-            actions,
             returns_batch,
             policy_net,
             optimizer,
@@ -134,4 +125,5 @@ def train_ppo(
         )
         print(f"action {action}")
         print(env.board.unicode())
+        print(list_infos)
         print(f"Episode: {episode + 1}, Loss: {loss.item()}")
