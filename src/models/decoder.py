@@ -7,6 +7,9 @@ import sys
 import torch.nn.functional as F
 import math
 import os
+
+from src.reward_train.distil_greedy_stockfish import legal_prob
+
 sys.path.append(os.getcwd())
 from src.data_process.decoder_generator import generator_decoder_dir, all_moves
 from torch.utils.data import DataLoader
@@ -118,29 +121,28 @@ class ChessDataset(IterableDataset):
 
 import torch.optim as optim
 import torch.nn as nn
+import chess
 
 def compute_legal_moves_acc(inputs, outputs, tokenizer):
+    b,seq_len = inputs.shape
     input_tokens = tokenizer.decode(inputs)
     output_tokens = tokenizer.decode(outputs)
     total_legal_moves = 0
     total_predicted_moves = 0
     # Compute legal move ratio
-    for i in range(inputs.shape[0]):  # Iterate over batch
+    for i in range(b):  # Iterate over batch
         board = chess.Board()  # Create a fresh chess board
-        for k in range(inputs.shape[1]):
-            
-            next_move = output_tokens[i,k,]   
-            board.push(real_move)
-            if next_move
-        # predicted_move = policy_index[predictions[i].item()]  # Convert prediction to UCI string
-        legal_moves = [move.uci() for move in board.legal_moves]  # Get all legal moves
-
-        if predicted_move in legal_moves:
-            total_legal_moves += 1  # Count legal moves
-
-        total_predicted_moves += 1  # Count total moves
-    *
-    return total_legal_moves/total_predicted_moves
+        for k in range(seq_len):
+            move = input_tokens[i,k]
+            next_move_pred = output_tokens[i,k]
+            if move == tokenizer.end_token:
+                break
+            board.push(move)
+            if next_move_pred in list(map(lambda x : x.uci(), board.legal_moves)):
+                total_legal_moves += 1
+            total_predicted_moves += 1
+    legal_acc = total_legal_moves / total_predicted_moves
+    return legal_acc
 
 def train(model, dataloader, epochs, lr, device, num_steps_per_epoch=500):
     from datetime import datetime
