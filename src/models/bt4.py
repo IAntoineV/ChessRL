@@ -233,7 +233,7 @@ class BT4(torch.nn.Module):
         # (B,8,8,104)
 
         # reshape
-        x = torch.reshape(x, (-1, 64, 104))
+        x = torch.reshape(x, (-1, 64, 104)) # (B,64,104)
 
         x = self.linear1(x)
         # add gelu
