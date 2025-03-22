@@ -265,7 +265,6 @@ def generator_decoder(pgn_path, max_seq_length=256):
                 if elo >= 2200 and 'FEN' not in pgn.headers.keys() and '960' not in pgn.headers[
                     'Event'] and 'Odds' not in pgn.headers['Event'] and 'house' not in pgn.headers['Event'] and len(moves)<=max_seq_length: # Make sure
                 #     # the game is classic game with at least 11 moves and 2200 elo in the game.
-                    print(len(moves))
                     yield moves
 
 

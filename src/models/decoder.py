@@ -7,9 +7,6 @@ import sys
 import torch.nn.functional as F
 import math
 import os
-
-from src.reward_train.distil_greedy_stockfish import legal_prob
-
 sys.path.append(os.getcwd())
 from src.data_process.decoder_generator import generator_decoder_dir, all_moves
 from torch.utils.data import DataLoader
@@ -57,9 +54,10 @@ class ChessDecoder(nn.Module):
         return mask
 
     def forward(self, src):
+        batch_size = src.shape[0]
         src = self.embdedding(src) * math.sqrt(self.d_model)
         src = self.pos_encoder(src) # addition src + position done in pos_encoder
-        src_mask = self.generate_square_subsequent_mask(src) # autoregressive (decoder)
+        src_mask = self.generate_square_subsequent_mask(batch_size).to(device) # autoregressive (decoder)
         output = self.transformer_encoder(src, mask=src_mask)
         output = self.fc_out(output)
         return output
@@ -133,10 +131,11 @@ def compute_legal_moves_acc(inputs, outputs, tokenizer):
     for i in range(b):  # Iterate over batch
         board = chess.Board()  # Create a fresh chess board
         for k in range(seq_len):
-            move = input_tokens[i,k]
-            next_move_pred = output_tokens[i,k]
-            if move == tokenizer.end_token:
+            move = input_tokens[i][k]
+            next_move_pred = output_tokens[i][k]
+            if move == tokenizer.end_token or move == tokenizer.pad_token:
                 break
+            move = chess.Move.from_uci(move)  
             board.push(move)
             if next_move_pred in list(map(lambda x : x.uci(), board.legal_moves)):
                 total_legal_moves += 1
@@ -144,7 +143,7 @@ def compute_legal_moves_acc(inputs, outputs, tokenizer):
     legal_acc = total_legal_moves / total_predicted_moves
     return legal_acc
 
-def train(model, dataloader, epochs, lr, device, num_steps_per_epoch=500):
+def train(model, dataloader, lr, device, num_steps=500):
     from datetime import datetime
     date = datetime.now().strftime("%Y%m%d_%H_%_%S")
     print(f"{date=}")
@@ -161,7 +160,7 @@ def train(model, dataloader, epochs, lr, device, num_steps_per_epoch=500):
     total_correct_per_epoch = 0
     total_tokens_per_epoch = 0
     dataloader = iter(dataloader)
-    for step in range(num_steps_per_epoch):
+    for step in range(num_steps):
         try:
             batch = next(dataloader)
         except:
@@ -178,26 +177,25 @@ def train(model, dataloader, epochs, lr, device, num_steps_per_epoch=500):
         optimizer.step()
         
         total_loss += loss.item()
-        wandb.log({"batch_loss": loss.item()})
+        wandb.log({"batch_loss": loss.item()}, step=step)
 
         # Compute accuracy
         predictions = torch.argmax(outputs, dim=-1)  # Get predicted token indices
         correct = (predictions == inputs).sum().item()  # Count correct predictions
         total_correct_per_num_steps += correct
         total_tokens_per_num_steps += inputs.numel()  # Total number of tokens
-
+        total_correct_per_epoch += correct
+        total_tokens_per_epoch +=  inputs.numel()  # Total number of tokens
         if step % 10 ==0:
-            avg_loss = total_loss / num_steps_per_epoch
+            avg_loss = total_loss / num_steps
             accuracy = total_correct_per_num_steps / total_tokens_per_num_steps
-            wandb.log({"step": step+1, "epoch_loss": avg_loss, "epoch_accuracy": accuracy})
+            wandb.log({ "epoch_loss": avg_loss, "epoch_accuracy": accuracy}, step=step)
             
-            if step % 1000:
+            if step % 1000==0:
                 epoch_accuracy = total_correct_per_epoch/total_tokens_per_epoch
                 print(f"{step=} : {epoch_accuracy=}")
-
-                
-
-
+                legal_acc = compute_legal_moves_acc(inputs,predictions, tokenizer )
+                wandb.log({"legal_acc": legal_acc}, step=step)
                 if accuracy > best_accuracy:
                     best_accuracy = epoch_accuracy
                     torch.save(model.state_dict(), f"models_saves/decoder_{date}_best_acc.pth")
@@ -220,7 +218,7 @@ if __name__=="__main__":
  
     batch_size=16
     lr = 1e-3
-    epochs = 10
+    num_steps = 500000
     tokenizer = ChessTokenizer()
     vocab_size = len(tokenizer.vocab)
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -241,7 +239,7 @@ if __name__=="__main__":
         "vocab_size": vocab_size,
         "batch_size": batch_size,
         "learning_rate": lr,
-        "epochs": epochs
+        "num_steps": num_steps
     })   
 
-    train(model, train_dataloader, epochs=epochs, lr=lr, device="cuda")
+    train(model, train_dataloader, num_steps=num_steps, lr=lr, device="cuda")
