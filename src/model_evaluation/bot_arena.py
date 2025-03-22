@@ -1,4 +1,6 @@
-
+# import os
+# import sys
+# sys.path.append(os.getcwd())
 
 
 from src.model_evaluation.ChessBot import ChessBot, MCTSChessBot, AlphaBetaChessBot
@@ -105,7 +107,7 @@ if __name__ == "__main__":
     # bot_names = ["RandomBot1", "RandomBot2"]
     # bots = [ RandomBot(), RandomBot()]
     bot_names = ["RandomBot", "MCTSBot"]
-    bots = [ RandomBot(), MCTSChessBot(iterations=1000)]
+    bots = [ RandomBot(), MCTSChessBot(iterations=1000, epsilon=1)]
 
     # bot_names = ["RandomBot", "AlphaBetaBot"]
     # bots = [ RandomBot(), AlphaBetaChessBot(search_depth=4)]
