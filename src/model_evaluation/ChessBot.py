@@ -28,10 +28,10 @@ class ChessBot(metaclass=abc.ABCMeta):
 
 
 class MCTSChessBot(ChessBot):
-    def __init__(self, critic=None, exploration_constant: float = 1.414, iterations: int = 1000):
+    def __init__(self, critic=None, exploration_constant: float = 1.414, iterations: int = 1000, epsilon: float = 0.2, max_depth: int = 10):
         self.board = chess.Board()
         self.mcts = MCTS(
-            critic=critic, exploration_constant=exploration_constant)
+            critic=critic, exploration_constant=exploration_constant, epsilon=epsilon, max_depth=max_depth)
         self.iterations = iterations
 
     def initialize_pos(self, list_moves: list):
@@ -74,7 +74,7 @@ class AlphaBetaChessBot(ChessBot):
 
 if __name__ == "__main__":
     # Initialize bots with desired parameters.
-    mcts_bot = MCTSChessBot(iterations=1000)
+    mcts_bot = MCTSChessBot(iterations=1000, epsilon=1)
     alphabeta_bot = AlphaBetaChessBot(search_depth=3)
 
     # Initialize board with an opening sequence, e.g.,

@@ -43,7 +43,7 @@ class Node:
         best_child = None
         for child in self.children:
             # If the child hasn't been visited, set score to infinity.
-            score = float("inf") if child.visits == 0 else (child.value / child.visits) + \
+            score = float("inf") if child.visits == 0 else child.value + \
                 exploration_constant * \
                 math.sqrt(math.log(self.visits) / child.visits)
             if score > best_score:
@@ -73,11 +73,13 @@ class Node:
 
 
 class MCTS:
-    def __init__(self, critic=None, exploration_constant: float = 1.414):
+    def __init__(self, critic=None, exploration_constant: float = 1.414, max_depth: int = 10, epsilon: float = 0.2):
         # Neural network for board evaluation (if available).
         self.critic = critic
         self.exploration_constant = exploration_constant
         self.nodes_expanded = 0
+        self.epsilon = epsilon
+        self.max_depth = max_depth
 
     def search(self, board: chess.Board, iterations: int = 1000):
         """
@@ -116,7 +118,7 @@ class MCTS:
         best_child = max(root.children, key=lambda c: c.visits)
         return best_child.move, metrics
 
-    def simulate(self, board: chess.Board, max_depth: int = 10) -> float:
+    def simulate(self, board: chess.Board) -> float:
         """
         Simulate a game from the current board state using the critic network for evaluation if available or by performing random rollouts (until max depth or game over).
         """
@@ -127,13 +129,29 @@ class MCTS:
         else:
             rollout_board = board.copy()
             depth = 0
-            while not rollout_board.is_game_over() and depth < max_depth:
+            while not rollout_board.is_game_over() and depth < self.max_depth:
                 if rollout_board.is_checkmate():
                     return -10000.0 if rollout_board.turn == chess.WHITE else 10000.0  # Loss for White, Win for Black
 
                 moves = list(rollout_board.legal_moves)
                 if not moves:
                     break
-                rollout_board.push(random.choice(moves))
+                if random.random() < self.epsilon:
+                    move = random.choice(moves)
+                else:
+                    best_reward = -float("inf")
+                    best_moves = []
+                    for move in moves:
+                        test_board = rollout_board.copy()
+                        test_board.push(move)
+                        reward = evaluate_board(test_board)
+                        if reward > best_reward:
+                            best_reward = reward
+                            best_moves = [move]
+                        elif reward == best_reward:
+                            best_moves.append(move)
+                    move = random.choice(best_moves)
+                
+                rollout_board.push(move)
                 depth += 1
             return evaluate_board(rollout_board)
