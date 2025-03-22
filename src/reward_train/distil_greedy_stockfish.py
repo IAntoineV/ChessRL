@@ -84,15 +84,16 @@ class StockfishWorker:
         self.depth = depth
         self.time = time
 
-    def evaluate_position(self, board_fen):
+    def evaluate_position(self, board_fen, turn_to_eval):
         """ Evaluate a single position using Stockfish."""
         board = chess.Board(board_fen)
         try:
             analysis = self.engine.analyse(board, chess.engine.Limit(depth=self.depth, time=self.time))
-            score = analysis["score"].white().score(mate_score=10000)
+            if turn_to_eval:
+                score = analysis["score"].white().score(mate_score=10000)
+            else:
+                score = analysis["score"].black().score(mate_score=10000)
             reward = np.tanh(score / 1000)  # Normalize to [-1, 1]
-            if board.turn == chess.WHITE:  # The move evaluated was played as black, so we need black reward.
-                reward = -reward
         except chess.engine.EngineTerminatedError:
             reward = -1
         return reward
@@ -106,7 +107,7 @@ class RewardModel:
         self.num_engines = num_engines
         self.workers = [StockfishWorker.remote(stockfish_path, depth, time) for _ in range(num_engines)]
 
-    def get_rewards(self, move_indexes, boards, policy_manager):
+    def get_rewards(self, move_indexes, boards:list[chess.Board], policy_manager):
         """ Get rewards from Stockfish in parallel using Ray actors."""
         b, G = move_indexes.shape
         tasks = []
@@ -114,7 +115,7 @@ class RewardModel:
         for batch_idx, board in enumerate(boards):
             board_to_eval = board.copy()
             worker = self.workers[batch_idx % self.num_engines]
-            board_task.append(worker.evaluate_position.remote(board_to_eval.fen()))
+            board_task.append(worker.evaluate_position.remote(board_to_eval.fen() ,board_to_eval.turn))
         eval_board = np.array(ray.get(board_task)).reshape(b, 1) #TODO check this
         for batch_idx in range(b):
             board = boards[batch_idx]
@@ -130,7 +131,7 @@ class RewardModel:
                 board_for_move.push(uci_ai)
 
                 worker = self.workers[(batch_idx * G + sample_idx) % self.num_engines]
-                tasks.append(worker.evaluate_position.remote(board_for_move.fen()))
+                tasks.append(worker.evaluate_position.remote(board_for_move.fen(), board.turn))
 
         evals = ray.get(tasks)
         evals = np.array(evals).reshape(b, G)
@@ -159,7 +160,7 @@ print("nb params : ", num_params)
 from src.data_process.data_gen import data_gen
 
 ds = data_gen({'batch_size': batch_size, 'path_pgn': '/home/antoine/Bureau/3A/3A_RL/ChessRL/pgn_data/', "with_fen": True})
-opt = torch.optim.NAdam(model.parameters(), lr=5e-5)
+opt = torch.optim.Adam(model.parameters(), lr=5e-5)
 reward_model = RewardModel(stockfish_path, depth, time, num_engines=num_engines)
 
 import wandb
@@ -200,7 +201,7 @@ for epoch in range(num_epochs):
             boards = list(map(lambda x : chess.Board(x), L_fen))
             rewards= reward_model.get_rewards(indexes_evaluated, boards, policy_manager)
             loss,infos = MoveTraining.compute_loss_bestmove(logits, indexes_evaluated, rewards)
-            stockfish_moves = np.argmax(rewards, axis=1)
+            best_move_policy = infos["best_move_policy"]
 
         opt.zero_grad()
 
@@ -216,7 +217,9 @@ for epoch in range(num_epochs):
             acc = torch.mean(
                 torch.eq(torch.argmax(logits, dim=-1), torch.argmax(y_true, dim=-1)).to(
                     torch.float32)).data.cpu().numpy()
-
+            acc_stockfish = torch.mean(
+                torch.eq(torch.argmax(logits, dim=-1), torch.argmax(best_move_policy, dim=-1)).to(
+                    torch.float32)).data.cpu().numpy()
             legal_prob = ((legal_mask * torch.nn.functional.softmax(logits, dim=-1)).sum(dim=-1)).mean().item()
             # print(f"step : {step}, accuracy : {accuracy}, loss : {total_loss}", end="\r")
 
@@ -226,7 +229,7 @@ for epoch in range(num_epochs):
 
         epoch_reward+= mean_reward_gain
         if step % 1 == 0:
-            logs = {"accuracy": acc.item(), "loss": loss.item(), "legal_prob": legal_prob}
+            logs = {"accuracy": acc.item(), "loss": loss.item(), "legal_prob": legal_prob, "acc_stockfish":acc_stockfish.item()}
             logs.update(infos)
             total_step = num_steps * epoch + step
             wandb.log(

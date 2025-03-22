@@ -196,7 +196,7 @@ for epoch in range(num_epochs):
             proba_ref = torch.softmax(logits_ref, dim=-1)
             masked_proba = proba_ref * legal_mask  # Zero out illegal moves
             masked_proba /= masked_proba.sum(dim=-1, keepdim=True)
-            indexes_evaluated = torch.multinomial(masked_proba, num_samples=G, replacement=False)
+            indexes_evaluated = torch.multinomial(masked_proba, num_samples=G, replacement=True)
             boards = list(map(lambda x : chess.Board(x), L_fen))
             rewards= reward_model.get_rewards(indexes_evaluated, boards, policy_manager)
             loss,infos = MoveTraining.compute_loss_grpo(logits, logits_ref, indexes_evaluated, rewards,
