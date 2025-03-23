@@ -131,7 +131,7 @@ class MCTS:
             depth = 0
             while not rollout_board.is_game_over() and depth < self.max_depth:
                 if rollout_board.is_checkmate():
-                    return -10000.0 if rollout_board.turn == chess.WHITE else 10000.0  # Loss for White, Win for Black
+                    return -1.0 if rollout_board.turn == chess.WHITE else 1.0  # Loss for White, Win for Black
 
                 moves = list(rollout_board.legal_moves)
                 if not moves:
