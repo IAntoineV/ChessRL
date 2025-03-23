@@ -14,6 +14,7 @@ import torch
 from torch.utils.data import IterableDataset
 
 import math
+device = "cuda" if torch.cuda.is_available() else "cpu"
 class PositionalEncoding(nn.Module):
     def __init__(self, nhid, dropout=0.1, max_len=5000):
         super(PositionalEncoding, self).__init__()
@@ -67,9 +68,11 @@ class ChessTokenizer:
 
     def __init__(self, pad_token ="<PAD>", end_token="<EOS>", all_moves=all_moves):
 
-
-        self.vocab = all_moves
+        import copy
+        self.vocab = copy.deepcopy(all_moves)
         self.vocab.extend([pad_token, end_token])
+        self.pad_id = len(self.vocab) -2
+        self.eos_id = len(self.vocab) -1
         self.dictionnary = { move: i for i,move in enumerate(self.vocab)}
         self.pad_token = pad_token
         self.end_token = end_token
@@ -123,6 +126,8 @@ import chess
 
 def compute_legal_moves_acc(inputs, outputs, tokenizer):
     b,seq_len = inputs.shape
+    inputs = inputs[:, 1:]
+    outputs = outputs[:, :-1]
     input_tokens = tokenizer.decode(inputs)
     output_tokens = tokenizer.decode(outputs)
     total_legal_moves = 0
@@ -137,65 +142,116 @@ def compute_legal_moves_acc(inputs, outputs, tokenizer):
                 break
             move = chess.Move.from_uci(move)  
             board.push(move)
-            if next_move_pred in list(map(lambda x : x.uci(), board.legal_moves)):
+            # if next_move_pred in list(map(lambda x : x.uci(), board.legal_moves)):
+            if next_move_pred in [m.uci() for m in board.legal_moves]:
                 total_legal_moves += 1
             total_predicted_moves += 1
     legal_acc = total_legal_moves / total_predicted_moves
     return legal_acc
 
+def compute_legal_prob(inputs, outputs, tokenizer):
+    """"""
+    b,seq_len = inputs.shape
+    outputs = outputs[:, :, :-2] #remove proba associated to eos and pad
+
+    probs = nn.functional.softmax(outputs, dim=-1)
+    total_predicted_moves = 0
+    total_legal_prob = 0
+    # Compute legal move ratio
+    for i in range(b):  # Iterate over batch
+        board = chess.Board()  # Create a fresh chess board
+        for k in range(seq_len):
+            move = inputs[i][k]
+            move = tokenizer.decode([[move]])[0][0]
+   
+            if move == tokenizer.end_token or move == tokenizer.pad_token:
+                break
+        
+            move = chess.Move.from_uci(move)  
+            board.push(move)
+            legal_mask = torch.zeros((vocab_size -2), device = device)
+            for x in board.legal_moves:
+                legal_mask[tokenizer.tokenize([x.uci()])[0]] = 1
+    
+            total_legal_prob += torch.sum(probs[i,k] * legal_mask, dim=-1)
+            total_predicted_moves += 1
+    legal_acc = total_legal_prob / total_predicted_moves
+    return legal_acc
+
+
 def train(model, dataloader, lr, device, num_steps=500):
     from datetime import datetime
-    date = datetime.now().strftime("%Y%m%d_%H_%_%S")
+    date = datetime.now().strftime("%Y%m%d_%H%M%S")
     print(f"{date=}")
     model.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.AdamW(model.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
     model.train()
     best_accuracy = 0.0
     best_loss = float('inf')
-    total_loss = 0
+    total_loss_per_nums_steps = 0
     total_correct_per_num_steps = 0
     total_tokens_per_num_steps = 0
 
     total_correct_per_epoch = 0
     total_tokens_per_epoch = 0
     dataloader = iter(dataloader)
+
+    from torch.cuda.amp import GradScaler, autocast
+
+    scaler = GradScaler()
+
     for step in range(num_steps):
+
         try:
             batch = next(dataloader)
-        except:
-            batch = next(iter(dataloader)) #new_iteration
+        except StopIteration:
+            dataloader = iter(dataloader)
+            batch = next(dataloader)
 
         inputs, lengths = batch  # Assuming inputs are tokenized indices
         inputs = inputs.to(device)
-        
+
         optimizer.zero_grad()
-                    
-        outputs = model(inputs)
-        loss = criterion(outputs.view(-1, outputs.size(-1)), inputs.view(-1))
-        loss.backward()
-        optimizer.step()
+
+        with autocast():
+
+            outputs = model(inputs)
+            b,seq_length,vocab_size = outputs.shape 
+            
+            loss = criterion(outputs[:, :-1].reshape(-1, vocab_size), inputs[:, 1:].flatten())
+     
+        scaler.scale(loss).backward()
+
+        # Unscale the gradients and call the optimizer step
+        scaler.step(optimizer)
+
+        # Update the scaler
+        scaler.update()
+
         
-        total_loss += loss.item()
+        total_loss_per_nums_steps += loss.item()
         wandb.log({"batch_loss": loss.item()}, step=step)
 
         # Compute accuracy
         predictions = torch.argmax(outputs, dim=-1)  # Get predicted token indices
-        correct = (predictions == inputs).sum().item()  # Count correct predictions
+        correct = ((predictions[:, :-1] == inputs[:,1:])  & (predictions[:, :-1] != tokenizer.pad_id)).sum().item()  # Count correct predictions
+
         total_correct_per_num_steps += correct
         total_tokens_per_num_steps += inputs.numel()  # Total number of tokens
         total_correct_per_epoch += correct
         total_tokens_per_epoch +=  inputs.numel()  # Total number of tokens
+
         if step % 10 ==0:
-            avg_loss = total_loss / num_steps
+            avg_loss = total_loss_per_nums_steps / 10
             accuracy = total_correct_per_num_steps / total_tokens_per_num_steps
-            wandb.log({ "epoch_loss": avg_loss, "epoch_accuracy": accuracy}, step=step)
+            wandb.log({ "nums_steps_loss": avg_loss, "num_steps_accuracy": accuracy}, step=step)
             
-            if step % 1000==0:
+            if step % 100==0:
                 epoch_accuracy = total_correct_per_epoch/total_tokens_per_epoch
                 print(f"{step=} : {epoch_accuracy=}")
-                legal_acc = compute_legal_moves_acc(inputs,predictions, tokenizer )
-                wandb.log({"legal_acc": legal_acc}, step=step)
+                legal_acc = compute_legal_prob(inputs, outputs, tokenizer)
+                wandb.log({"legal_prob": legal_acc}, step=step)
                 if accuracy > best_accuracy:
                     best_accuracy = epoch_accuracy
                     torch.save(model.state_dict(), f"models_saves/decoder_{date}_best_acc.pth")
@@ -207,28 +263,28 @@ def train(model, dataloader, lr, device, num_steps=500):
             total_loss = 0
             total_correct = 0
             total_tokens = 0
+            total_loss_per_nums_steps = 0
     wandb.finish()
 
 
 if __name__=="__main__":
     num_layers = 6
-    d_model = 640
-    d_ff = 640
+    d_model = 960
+    d_ff = 960
     num_heads = 32
- 
-    batch_size=16
-    lr = 1e-3
+    batch_size=1024
+    lr = 5e-5
     num_steps = 500000
     tokenizer = ChessTokenizer()
     vocab_size = len(tokenizer.vocab)
+    print(f"{vocab_size=}")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = ChessDecoder(num_layers, d_model, d_ff, num_heads, vocab_size).to(device)
-
+    print((sum(p.numel() for p in model.parameters())))
     dir_path = "/raid/home/detectionfeuxdeforet/caillaud_gab/llm_project/ChessRL/data/"
     train_dataset = ChessDataset(generator_decoder_dir, dir_path = dir_path)
-
  
-    train_dataloader =  DataLoader(train_dataset, batch_size=batch_size, collate_fn=lambda x: collate_fn(x, tokenizer=tokenizer))
+    train_dataloader =  DataLoader(train_dataset, batch_size=batch_size, collate_fn=lambda x: collate_fn(x, tokenizer=tokenizer), drop_last=True)
 
     import wandb
     wandb.init(project="chess-llm", config={
