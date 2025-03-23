@@ -114,7 +114,7 @@ if __name__ == "__main__":
     # train_critic(critic, dataset, epochs=50)
 
     # mcts = MCTS(critic=critic, exploration_constant=1.414)
-    mcts = MCTS(critic=None, exploration_constant=1.414)
+    mcts = MCTS(critic=None, exploration_constant=1.414, epsilon=1, max_depth=10)
     # Play a game: MCTS (White) vs Stockfish (Black)
     board = chess.Board()
     print("Starting game: MCTS (White) vs Stockfish (Black)")

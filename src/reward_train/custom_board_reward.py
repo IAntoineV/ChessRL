@@ -1,4 +1,5 @@
 import chess
+import numpy as np
 
 """
 See https://www.chessprogramming.org/Simplified_Evaluation_Function
@@ -160,7 +161,7 @@ def evaluate_piece(piece: chess.Piece, square: chess.Square, endgame: bool) -> i
 
 def evaluate_board(board: chess.Board) -> float:
     if board.is_checkmate():
-        return -10000.0 if board.turn else 10000.0
+        return -1.0 if board.turn else 1.0
     if board.is_stalemate() or board.is_insufficient_material():
         return 0.0
     endgame = is_near_end_game(board)
@@ -169,7 +170,7 @@ def evaluate_board(board: chess.Board) -> float:
         piece = board.piece_at(square)
         if piece:
             score += evaluate_piece(piece, square, endgame)
-    
+    score = np.tanh(score / 1000)
     return score if board.turn == chess.WHITE else -score
 
 
