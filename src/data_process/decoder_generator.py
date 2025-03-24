@@ -239,15 +239,16 @@ print("Number of unique tokens: ", len(all_moves))
 
 import os
 def generator_decoder_dir(dir_path, max_seq_length=256):
-    for pgn in os.listdir(dir_path):
-        # print(pgn)
-        pgn_path = os.path.join(dir_path,pgn)
-        gen = generator_decoder(pgn_path, max_seq_length=max_seq_length)
-        while True:
-            try:
-                yield next(gen)
-            except:
-                break
+    while True:
+        for pgn in os.listdir(dir_path):
+            # print(pgn)
+            pgn_path = os.path.join(dir_path,pgn)
+            gen = generator_decoder(pgn_path, max_seq_length=max_seq_length)
+            while True:
+                try:
+                    yield next(gen)
+                except:
+                    break
 
 def generator_decoder(pgn_path, max_seq_length=256):
     with open(pgn_path, encoding="utf8") as f:
@@ -265,6 +266,6 @@ def generator_decoder(pgn_path, max_seq_length=256):
                 if elo >= 2200 and 'FEN' not in pgn.headers.keys() and '960' not in pgn.headers[
                     'Event'] and 'Odds' not in pgn.headers['Event'] and 'house' not in pgn.headers['Event'] and len(moves)<=max_seq_length: # Make sure
                 #     # the game is classic game with at least 11 moves and 2200 elo in the game.
-                    yield moves
+                    yield moves, [float(pgn.headers["WhiteElo"]), float(pgn.headers["BlackElo"]), float(pgn.headers["TimeControl"].split("+")[0])]
 
 

@@ -34,6 +34,7 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[: x.size(0), :]
         return self.dropout(x)
 
+
 class ChessDecoder(nn.Module):
     def __init__(self, num_layers, d_model, d_ff, num_heads, vocab_size, dropout=0.1):
 
@@ -45,6 +46,7 @@ class ChessDecoder(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layers, num_layers = num_layers) 
         self.fc_out = nn.Linear(d_model, vocab_size)  # Predict next move
         self.d_model = d_model
+        self.encode_infos = nn.Linear(d_model+3, d_model)
     def generate_square_subsequent_mask(self, sz):
         mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
         mask = (
@@ -54,10 +56,12 @@ class ChessDecoder(nn.Module):
         )
         return mask
 
-    def forward(self, src):
-        batch_size = src.shape[0]
-        src = self.embdedding(src) * math.sqrt(self.d_model)
+    def forward(self, src, infos):
+        batch_size, seq_length = src.shape
+        src = self.embdedding(src) * math.sqrt(self.d_model) 
         src = self.pos_encoder(src) # addition src + position done in pos_encoder
+        src = torch.cat((src, infos.unsqueeze(1).tile(1, seq_length,1)), dim=-1)
+        src = self.encode_infos(src)
         src_mask = self.generate_square_subsequent_mask(batch_size).to(device) # autoregressive (decoder)
         output = self.transformer_encoder(src, mask=src_mask)
         output = self.fc_out(output)
@@ -100,17 +104,18 @@ def collate_fn(batch, tokenizer=None,  pad_token="<PAD>"):
         torch.Tensor: Lengths of original sequences before padding.
     """
     # Find the longest sequence in the batch
-    max_length = max([len(moves) for moves in batch])
+    max_length = max([len(el[0]) for el in batch])
     # Pad all sequences to the same length
-    padded_batch = [moves + [pad_token] * (max_length - len(moves)) for moves in batch]
+    padded_batch = [moves[0] + [pad_token] * (max_length - len(moves[0])) for moves in batch]
     # Convert to tensor (assuming moves are tokenized into indices elsewhere)
     
     tokenized_batch = [tokenizer.tokenize(game) for game in padded_batch ]
     batch_tensor = torch.tensor(tokenized_batch, dtype=torch.long)
     # Store original lengths before padding
-    lengths = torch.tensor([len(moves) for moves in batch], dtype=torch.long)
+    lengths = torch.tensor([len(moves[0]) for moves in batch], dtype=torch.long)
     
-    return batch_tensor, lengths
+    infos = torch.tensor([el[1] for el in batch]).long()
+    return batch_tensor, lengths, infos
 
 class ChessDataset(IterableDataset):
     def __init__(self, generator_decoder_dir, dir_path):
@@ -209,14 +214,15 @@ def train(model, dataloader, lr, device, num_steps=500):
             dataloader = iter(dataloader)
             batch = next(dataloader)
 
-        inputs, lengths = batch  # Assuming inputs are tokenized indices
+        inputs, lengths, infos = batch  # Assuming inputs are tokenized indices
         inputs = inputs.to(device)
+        infos = infos.to(device)
 
         optimizer.zero_grad()
 
         with autocast():
 
-            outputs = model(inputs)
+            outputs = model(inputs, infos)
             b,seq_length,vocab_size = outputs.shape 
             
             loss = criterion(outputs[:, :-1].reshape(-1, vocab_size), inputs[:, 1:].flatten())
@@ -272,8 +278,8 @@ if __name__=="__main__":
     d_model = 960
     d_ff = 960
     num_heads = 32
-    batch_size=1024
-    lr = 5e-5
+    batch_size= 256
+    lr = 4e-5
     num_steps = 500000
     tokenizer = ChessTokenizer()
     vocab_size = len(tokenizer.vocab)
