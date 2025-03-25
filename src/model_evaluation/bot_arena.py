@@ -1,9 +1,8 @@
-# import os
-# import sys
-# sys.path.append(os.getcwd())
+
 
 
 from src.model_evaluation.ChessBot import ChessBot, MCTSChessBot, AlphaBetaChessBot
+from src.model_evaluation.StockfishBot import StockfishBot
 import chess
 import chess.pgn
 
@@ -57,12 +56,16 @@ class ChessTournament:
 
     def run_1v1_matches(self):
         num_bots = len(self.bots)
+        num_games=0
+        total_games = self.games_per_match*num_bots*(num_bots-1)
         for i, (bot1, name1) in enumerate(zip(self.bots, self.names)):
             for j, (bot2, name2) in enumerate(zip(self.bots, self.names)):
+
                 if i == j:
                     continue
-
                 for k in range(self.games_per_match):
+                    print(f"Num match to play {num_games}/{total_games} ")
+                    num_games += 1
                     white_bot, black_bot = (bot1, bot2) if k % 2 == 0 else (bot2, bot1)
                     white_name, black_name = (name1, name2) if k % 2 == 0 else (name2, name1)
                     winner = self.play_game(white_bot, black_bot, white_name, black_name)
@@ -76,6 +79,7 @@ class ChessTournament:
                         self.win_stats[name1]['draws'] += 1
                         self.win_stats[name2]['draws'] += 1
                         self.results_matrix[i][j][k % 2] = 0.5  # Draw
+
 
     def display_results(self):
         print("Final Rankings:")
@@ -97,7 +101,7 @@ class ChessTournament:
 if __name__ == "__main__":
     from src.model_evaluation.toy_bot import  RandomBot
     from src.data_process.parse import dir_decorator, list_move_generator
-    generator = dir_decorator(list_move_generator, "../../pgn_data_example")
+    generator = dir_decorator(list_move_generator, "../../pgn_data")
     def gen():
         for list_move in generator:
             yield [move.uci() for move in list_move]
@@ -106,8 +110,11 @@ if __name__ == "__main__":
     generator_listmove = gen()
     # bot_names = ["RandomBot1", "RandomBot2"]
     # bots = [ RandomBot(), RandomBot()]
-    bot_names = ["RandomBot", "MCTSBot"]
-    bots = [ RandomBot(), MCTSChessBot(iterations=1000, epsilon=1)]
+    import os
+    stockfish_path = os.environ.get("STOCKFISH_PATH")
+
+    bot_names = ["RandomBot", "Stockfish"]
+    bots = [ RandomBot(), StockfishBot(stockfish_path)]
 
     # bot_names = ["RandomBot", "AlphaBetaBot"]
     # bots = [ RandomBot(), AlphaBetaChessBot(search_depth=4)]

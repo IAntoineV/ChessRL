@@ -217,7 +217,7 @@ policy_index = [
     "g7g8r", "g7g8b", "g7h8q", "g7h8r", "g7h8b", "h7g8q", "h7g8r", "h7g8b",
     "h7h8q", "h7h8r", "h7h8b",
 
-]
+] # UCI format
 
 """
 Moves in UCI that are not in policy index.

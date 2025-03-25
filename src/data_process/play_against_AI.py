@@ -24,7 +24,7 @@ class AIHandler:
         boad_turn = len(L_moves_from_start) # odd == black turn at the end, even == white turn at the end
         for i, move in enumerate(L_moves_from_start):
             xs = get_x_from_board(elo, board, TC, with_lm_mask=False)  # get white repr of board
-            board.push(move) # play the move
+            board.push_uci(move) # play the move
             if (boad_turn - i) % 2 == 0:
                 x_start.append(xs)
             else:
@@ -63,7 +63,7 @@ if __name__ == '__main__':
         moves = [move for move in pgn.mainline_moves()]
         start_index = 29
         moves = moves[:start_index]
-        x_start = AIHandler.get_init_repr(moves, elo, TC, history=history)
+        x_start = AIHandler.get_init_repr(list(map(lambda x : x.uci(), moves)), elo, TC, history=history)
         board = chess.Board()
         for move in moves:
             board.push(move)

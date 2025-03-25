@@ -26,8 +26,7 @@ class MoveTraining:
         best_move_policy = torch.zeros_like(policy)
         best_move_policy[np.arange(b), best_index] = 1
         loss = torch.nn.functional.cross_entropy(policy, best_move_policy)
-        infos = {"best_move_policy": best_move_policy}
-        return loss, infos
+        return loss, best_move_policy, {}
 
     @staticmethod
     def compute_loss_grpo(policy, policy_ref, indexes_evaluated, rewards, epsilon=0.2, stable_eps = 1e-2, kl_coef=1e-4):

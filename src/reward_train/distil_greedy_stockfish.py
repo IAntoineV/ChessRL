@@ -142,14 +142,15 @@ class RewardModel:
 ################### PARAMETERS
 num_steps = 10
 num_epochs=1000
-G = 16
-batch_size=128
+G = 8
+batch_size=256
 stockfish_path = "../../stockfish/stockfish-ubuntu-x86-64-avx2"
 depth = 15
 time = 1
 epsilon_grpo = 0.2
 num_engines = 16
 kl_coef = 1
+warmup_steps=1000
 ###################
 
 model.train()
@@ -159,9 +160,16 @@ print("nb params : ", num_params)
 
 from src.data_process.data_gen import data_gen
 
-ds = data_gen({'batch_size': batch_size, 'path_pgn': '/home/antoine/Bureau/3A/3A_RL/ChessRL/pgn_data/', "with_fen": True})
-opt = torch.optim.Adam(model.parameters(), lr=5e-5)
+ds = data_gen({'batch_size': batch_size, 'path_pgn': '/home/antoine/Bureau/3A/3A_RL/ChessRL/pgn_data_2025/', "with_fen": True})
+opt = torch.optim.NAdam(model.parameters(), lr=5e-5)
 reward_model = RewardModel(stockfish_path, depth, time, num_engines=num_engines)
+def lr_lambda(current_step):
+    if current_step < warmup_steps:
+        return current_step / warmup_steps  # Linear warm-up
+    return 1
+from torch.optim.lr_scheduler import LambdaLR
+scheduler = LambdaLR(opt, lr_lambda)
+
 
 import wandb
 
@@ -197,11 +205,19 @@ for epoch in range(num_epochs):
             proba_ref = torch.softmax(logits_ref, dim=-1)
             masked_proba = proba_ref * legal_mask  # Zero out illegal moves
             masked_proba /= masked_proba.sum(dim=-1, keepdim=True)
-            indexes_evaluated = torch.multinomial(masked_proba, num_samples=G, replacement=False)
+            indexes_evaluated = torch.multinomial(masked_proba, num_samples=G, replacement=False) #SHOULD BE FALSE
+            # if replacement=True accuracy_bestmove becomes Innacurate
             boards = list(map(lambda x : chess.Board(x), L_fen))
             rewards= reward_model.get_rewards(indexes_evaluated, boards, policy_manager)
-            loss,infos = MoveTraining.compute_loss_bestmove(logits, indexes_evaluated, rewards)
-            best_move_policy = infos["best_move_policy"]
+            loss_bestmove,best_move_policy,infos = MoveTraining.compute_loss_bestmove(logits, indexes_evaluated, rewards)
+            loss = 0
+
+            loss_legal_prob = (1-(torch.softmax(logits, dim=-1) * legal_mask).sum(dim=-1)).mean()
+            loss_human = torch.nn.functional.cross_entropy(logits, y_true)
+            loss += loss_bestmove
+            loss += loss_legal_prob
+            loss += 1e-2*loss_human
+            loss += aux_loss
 
         opt.zero_grad()
 
@@ -210,7 +226,7 @@ for epoch in range(num_epochs):
 
         # Unscale the gradients and call the optimizer step
         scaler.step(opt)
-
+        scheduler.step()
         # Update the scaler
         scaler.update()
         with torch.no_grad():
@@ -225,11 +241,10 @@ for epoch in range(num_epochs):
 
             epoch_loss += loss.item()
             epoch_accuracy += acc.item()
-        mean_reward_gain = infos["reward_bar_model"] - infos["reward_bar_model_ref"]
 
-        epoch_reward+= mean_reward_gain
         if step % 1 == 0:
-            logs = {"accuracy": acc.item(), "loss": loss.item(), "legal_prob": legal_prob, "acc_stockfish":acc_stockfish.item()}
+            logs = {"accuracy": acc.item(), "loss": loss.item(), "legal_prob": legal_prob, "acc_bestmove":acc_stockfish.item(),
+                    "lr": scheduler.get_last_lr()[0], "loss_human":loss_human.item(), "loss_bestmove":loss_bestmove.item()}
             logs.update(infos)
             total_step = num_steps * epoch + step
             wandb.log(
@@ -245,7 +260,7 @@ for epoch in range(num_epochs):
     print(f"epoch : {epoch}, loss: {epoch_loss}, accuracy: {epoch_accuracy}, reward: {epoch_reward}")
 
     # Save the model if it has the best accuracy or loss so far
-    if epoch_reward > 0 :
+    if epoch_loss < best_loss :
         best_reward = epoch_reward
         best_loss = epoch_loss
         torch.save(model.state_dict(), f'stockfish_best_model_{epoch}.pth')
