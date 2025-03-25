@@ -315,7 +315,7 @@ def get_x_from_board(elo, board, TC, with_lm_mask=True):
         return np.concatenate((before, castling_rights, en_passant_right, color, TC, elo), axis=2)
 
     lm_mask = np.zeros(1858, dtype=np.float32)
-    for possible in board.legal_moves:
+    for possible in mirrored_board.legal_moves:
         possible_str = possible.uci()
         if possible_str[-1] != 'n':
             lm_mask[policy_index.index(possible_str)] = 1

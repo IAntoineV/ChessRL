@@ -1,13 +1,8 @@
-#vocab consists of
+# vocab consists of
 import chess
+import chess.pgn
 
-#all the possible moves
-#special tokens start_think and end_think
-#special token end
-#special token end_variation
-import numpy as np
-
-policy_index = [
+all_moves = [
     "a1b1", "a1c1", "a1d1", "a1e1", "a1f1", "a1g1", "a1h1", "a1a2", "a1b2",
     "a1c2", "a1a3", "a1b3", "a1c3", "a1a4", "a1d4", "a1a5", "a1e5", "a1a6",
     "a1f6", "a1a7", "a1g7", "a1a8", "a1h8", "b1a1", "b1c1", "b1d1", "b1e1",
@@ -216,12 +211,6 @@ policy_index = [
     "f7f8b", "f7g8q", "f7g8r", "f7g8b", "g7f8q", "g7f8r", "g7f8b", "g7g8q",
     "g7g8r", "g7g8b", "g7h8q", "g7h8r", "g7h8b", "h7g8q", "h7g8r", "h7g8b",
     "h7h8q", "h7h8r", "h7h8b",
-
-] # UCI format
-
-"""
-Moves in UCI that are not in policy index.
-
 #add the promotions for black
     "a2a1q","a2a1r","a2a1b","a2b1q","a2b1r","a2b1b",
     "b2a1q","b2a1r","b2a1b","b2b1q","b2b1r","b2b1b","b2c1q","b2c1r","b2c1b",
@@ -242,72 +231,41 @@ Moves in UCI that are not in policy index.
     "c2c1n","c2d1n","d2c1n","d2d1n","d2e1n","e2d1n",
     "e2e1n","e2f1n","f2e1n","f2f1n","f2g1n","g2f1n",
     "g2g1n","g2h1n","h2g1n","h2h1n"
-    """
 
-def get_hash_table_vocab_to_index(vocab_list=None):
-    vocab_list = policy_index if vocab_list is None else vocab_list
-    return {move : k  for k,move in enumerate(vocab_list)}
+]  # UCI format
 
 
-class PolicyIndex:
-    def __init__(self):
-        self.policy_index = policy_index
-        self.token_to_index = {move: k for k, move in enumerate(self.policy_index)}
-    def uci_to_token(self, L_uci, color):
-        L_uci_white = list(map(lambda x: x[0] if x[1]==chess.WHITE else self.mirror_uci_string(x[0]), zip(L_uci, color)))
-        L_tokens = list(map(lambda x : x[:-1] if x[-1]=="n" else x, L_uci_white))
-        return L_tokens
+print("Number of unique tokens: ", len(all_moves))
 
-    def uci_to_index(self, L_uci, color):
-        L_tokens = self.uci_to_token(L_uci, color)
-        return [ self.token_to_index[token] for token in L_tokens ]
+import os
+def generator_decoder_dir(dir_path, max_seq_length=256):
+    while True:
+        for pgn in os.listdir(dir_path):
+            # print(pgn)
+            pgn_path = os.path.join(dir_path,pgn)
+            gen = generator_decoder(pgn_path, max_seq_length=max_seq_length)
+            while True:
+                try:
+                    yield next(gen)
+                except:
+                    break
 
-    def token_to_uci(self, board : chess.Board, token):
+def generator_decoder(pgn_path, max_seq_length=256):
+    with open(pgn_path, encoding="utf8") as f:
+        while True:
+            # load game
+            # del pgn
+            pgn = chess.pgn.read_game(f)
+            if pgn.next() != None:
+                # del moves
+                moves = [move.uci() for move in pgn.mainline_moves()]
+                try:
+                    elo = min(int(pgn.headers["WhiteElo"]), int(pgn.headers["BlackElo"]))
+                except:
+                    elo = 1500
+                if elo >= 2200 and 'FEN' not in pgn.headers.keys() and '960' not in pgn.headers[
+                    'Event'] and 'Odds' not in pgn.headers['Event'] and 'house' not in pgn.headers['Event'] and len(moves)<=max_seq_length: # Make sure
+                #     # the game is classic game with at least 11 moves and 2200 elo in the game.
+                    yield moves, [float(pgn.headers["WhiteElo"]), float(pgn.headers["BlackElo"]), float(pgn.headers["TimeControl"].split("+")[0])]
 
-        knight_prom=False
-
-        if len(token)==4: # No promotion (or knight promotions)
-            # Check if piece go to last line (possible promotion to knight)
-            check = token[3] == "8"
-            if board.turn==chess.BLACK:
-                check = token[3] == "1"
-            if check:
-                # Check for pawn move
-                letter = token[0]
-                number = int(token[1]) - 1
-                if board.turn==chess.BLACK:
-                    number = 7-number
-                letter_int = ord(letter) - 97
-                piece = board.piece_at(letter_int + 8 * number)
-                if piece is chess.PAWN:
-                    # The move is a knight promotion
-                    knight_prom=True
-        uci = token
-        if knight_prom:
-            uci += "n"
-        if board.turn == chess.BLACK:
-            uci = self.mirror_uci_string(uci)
-        return uci
-
-    @staticmethod
-    def mirror_uci_string(uci_string): # Mirrors a uci string
-        
-        if len(uci_string) <= 4:
-            return uci_string[0] + str(9 - int(uci_string[1])) + uci_string[2] + str(9 - int(uci_string[3]))
-        return uci_string[0] + str(9 - int(uci_string[1])) + uci_string[2] + str(9 - int(uci_string[3])) + \
-            uci_string[4]
-
-
-print("Number of unique tokens: ", len(policy_index))
-
-
-if __name__ == "__main__":
-    modulator = PolicyIndex()
-    from data_gen import generate_batch
-    one_pgn_iterator = generate_batch(1024, '/home/antoine/Bureau/3A/3A_RL/ChessRL/pgn_data/lichess_elite_2024-01.pgn')
-    for i in range(10000000):
-        print(i)
-        x, y = next(one_pgn_iterator)
-        indexes = np.where(y == 1.)[1]
-        tokens = modulator.policy_index[indexes]
 
