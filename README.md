@@ -41,15 +41,12 @@ pip install -r requirements.txt
 
 ## 🧠 Tutorials
 
-The `tutorials/` folder contains step-by-step Jupyter notebooks to help you understand and use the project effectively:
+There are basic tutorials with step-by-step Jupyter notebooks to help you understand and use the project effectively:
 
 | Notebook           | Description                                                                         |
 |--------------------|-------------------------------------------------------------------------------------|
 | `tutorial1.ipynb`  | 🧩 **Token Overview**: Explains the list of playable tokens used in the model.      |
 | `tutorial2.ipynb`  | 📘 **Supervised Learning**: Shows how to train the model on human games.            |
-| `tutorial3.ipynb`  | 🔁 **Reinforcement Learning**: Demonstrates GRPO training + Stockfish distillation. |
-| `tutorial4.ipynb`  | 📈 **Evaluation**: Evaluates the model's Elo using Stockfish.                       |
 
-To run a tutorial, make sure your environment is properly set up and all dependencies are installed. You’ll also need a valid path to the Stockfish engine set in the `.env` file.
 
 ---
