@@ -22,17 +22,29 @@ print("device : ", device)
 elo = 3000
 TC = "600"
 history = 7
-pgn_path = "../../pgn_data_example/pgn_example.pgn"
 
-dir = "../../models_saves/model_1/"
 
-config_path = dir + "config.json"
-weights_path_s = dir + "model.pth"
-weights_path_d = "/home/antoine/Bureau/3A/3A_RL/ChessRL/src/reward_train/stockfish_best_model_83.pth"
-weights_path_g = "/home/antoine/Bureau/3A/3A_RL/ChessRL/src/reward_train/grpo_best_model_60.pth"
-weights_paths = [weights_path_s, weights_path_d, weights_path_g]
-bt4_bots = [BT4Bot(weights_path,config_path, elo=elo, time_control=TC, history=history ) for weights_path in weights_paths]
-names = ["Suvpervised", "Distil", "GRPO"]
+from dotenv import load_dotenv
+import os
+load_dotenv()
+pgn_dir = os.environ.get("PGN_DIR")
+pgn_path = os.path.join(pgn_dir, os.listdir(pgn_dir)[0])
+print(f"pgn file : {pgn_path}")
+model_dir = os.environ.get("MODEL_DIR")
+model_distil_w = os.environ.get("MODEL_DISTIL_WEIGHTS")
+model_distil_c = os.environ.get("MODEL_DISTIL_CONFIG")
+model_grpo_w = os.environ.get("MODEL_GRPO_WEIGHTS")
+model_grpo_c = os.environ.get("MODEL_GRPO_CONFIG")
+print(f"model dir : {model_dir}")
+
+
+config_path_model = os.path.join(model_dir,"config.json")
+weights_path_s = os.path.join(model_dir, "model.pth")
+weights_paths = [weights_path_s, model_distil_w, model_grpo_w]
+config_paths = [config_path_model, model_distil_c, model_grpo_c]
+bt4_bots = [BT4Bot(weights_path,config_path, elo=elo, time_control=TC, history=history ) for weights_path,config_path in zip(weights_paths,config_paths)]
+names = ["Supervised", "Distil", "GRPO"]
+
 stockfish_path = os.environ.get("STOCKFISH_PATH")
 
 bot_names = ["BT4", "Stockfish"]

@@ -99,9 +99,13 @@ class ChessTournament:
 
 
 if __name__ == "__main__":
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    pgn_dir = os.environ.get("PGN_DIR")
     from src.model_evaluation.toy_bot import  RandomBot
     from src.data_process.parse import dir_decorator, list_move_generator
-    generator = dir_decorator(list_move_generator, "../../pgn_data")
+    generator = dir_decorator(list_move_generator, pgn_dir)
     def gen():
         for list_move in generator:
             yield [move.uci() for move in list_move]

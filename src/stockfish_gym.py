@@ -183,6 +183,7 @@ class ChessStockfishEnv(gym.Env):
 
 
 if __name__ == "__main__":
+    from dotenv import load_dotenv
     load_dotenv()
     env = ChessStockfishEnv(
         stockfish_path=os.environ.get("STOCKFISH_PATH"),

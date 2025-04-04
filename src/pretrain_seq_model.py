@@ -1,5 +1,6 @@
 import torch
 import chess
+from dotenv import load_dotenv
 from tqdm import tqdm
 import numpy as np
 import os
@@ -13,10 +14,15 @@ from data_process.legal_mask import get_legal_move_mask
 from torch.optim import AdamW
 from transformers import get_cosine_schedule_with_warmup
 
+
+load_dotenv()
 # Setup device
 device = "cuda" if torch.cuda.is_available() else "cpu"
 seq_len = 64
 input_dim = 19
+
+#Wandb key
+wandb_key = "YOUR KEY"
 
 # Model configuration
 config_model = SeqModelConfig(output_dim=len(policy_index), input_dim=input_dim, n_embd=1200, seq_len=seq_len, n_layer=6)
@@ -67,7 +73,7 @@ parsing_config = ParsingConfigFenMove(batch_size=batch_size, num_to_sample=num_t
 config = {**config_model.__dict__, **parsing_config.__dict__, **training_config}
 
 # Initialize Weights & Biases (wandb)
-wandb.login(key="6ecdce8389857e2bfaa47bd665bdc26e84fd2fcf")
+wandb.login(key=wandb_key)
 wandb.init(project="chessRL", name=f"run_{time_stamp}", config=config)
 
 generator = dir_iterator_fen_move(dir_pgn_path, config=parsing_config)

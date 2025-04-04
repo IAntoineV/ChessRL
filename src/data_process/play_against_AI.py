@@ -1,3 +1,4 @@
+import os
 
 import numpy as np
 import chess.pgn
@@ -39,6 +40,9 @@ class AIHandler:
         return x_start
 
 if __name__ == '__main__':
+    from dotenv import load_dotenv
+    load_dotenv()
+
     device= "cuda" if torch.cuda.is_available() else "cpu"
     print("device : ", device)
     elo=2700
@@ -46,9 +50,9 @@ if __name__ == '__main__':
     history = 7
     pgn_path = "../../pgn_data_example/pgn_example.pgn"
 
-    dir = "../../models_saves/model_1/"
-    weights_path = dir + "model.pth"
-    config_path = dir + "config.json"
+    dir = os.environ.get("MODEL_DIR")
+    weights_path = os.path.join(dir, "model.pth")
+    config_path = os.path.join(dir,"config.json")
 
     config = json.load(open(config_path, "r"))
     model = BT4(**config).to(device)

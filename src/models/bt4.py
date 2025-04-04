@@ -290,14 +290,23 @@ class BT4(torch.nn.Module):
 
         h_fc1 = self.applyattn(policy_attn_logits, promotion_logits)
 
-        return h_fc1, loss_exp
+        return h_fc1, aux_loss
 
 if __name__=="__main__":
+    from dotenv import load_dotenv
+    import json
+    load_dotenv()
+
     num_layers = 6
     d_model = 640
     d_ff = 640
     num_heads = 32
-
+    config = {
+        "num_layers": num_layers,
+        "d_model": d_model,
+        "d_ff": d_ff,
+        "num_heads": num_heads
+    }
     bt4 = BT4(num_layers=num_layers, d_model=d_model, d_ff=d_ff, num_heads=num_heads).to("cuda")
 
 
@@ -307,12 +316,18 @@ if __name__=="__main__":
 
     from src.data_process.data_gen import data_gen
 
-    ds = data_gen({'batch_size': 256, 'path_pgn': '/home/antoine/Bureau/3A/3A_RL/ChessRL/pgn_data/'})
+    ds = data_gen({'batch_size': 256, 'path_pgn': os.environ.get("PGN_DIR")})
+    model_dir = os.environ.get("MODEL_DIR")
+    os.makedirs(model_dir, exist_ok=True)
+    config_path = os.path.join(model_dir, "config.json")
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=4)
 
     opt = torch.optim.NAdam(bt4.parameters(), lr=5e-5)
 
     import wandb
 
+    wandb.login(key=os.environ.get("WANDB_KEY"))
     id = wandb.util.generate_id()
     wandb.init(project='ChessRL_pretrain', id=id, resume='allow')
 

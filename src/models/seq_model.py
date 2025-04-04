@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from models.layers import SeqModelConfig, Block, LayerNorm, AttentionPooling, FenEncoder
+from src.models.layers import SeqModelConfig, Block, LayerNorm, AttentionPooling, FenEncoder
 class SeqModel(nn.Module):
     def __init__(self, config: SeqModelConfig):
         super().__init__()

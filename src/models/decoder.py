@@ -287,7 +287,7 @@ if __name__=="__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = ChessDecoder(num_layers, d_model, d_ff, num_heads, vocab_size).to(device)
     print((sum(p.numel() for p in model.parameters())))
-    dir_path = "/raid/home/detectionfeuxdeforet/caillaud_gab/llm_project/ChessRL/data/"
+    dir_path = os.environ.get("PGN_DIR")
     train_dataset = ChessDataset(generator_decoder_dir, dir_path = dir_path)
  
     train_dataloader =  DataLoader(train_dataset, batch_size=batch_size, collate_fn=lambda x: collate_fn(x, tokenizer=tokenizer), drop_last=True)

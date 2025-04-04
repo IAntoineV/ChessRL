@@ -15,11 +15,14 @@ from src.reward_train.reward_loss import MoveTraining
 import chess.engine
 import ray
 
+from dotenv import load_dotenv
+load_dotenv()
+
 sys.path.append(os.getcwd())
-dir = "../../models_saves/model_1/"
+dir = os.environ.get("MODEL_DIR")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-weights_path = dir + "model.pth"
-config_path = dir + "config.json"
+weights_path = os.path.join(dir,"model.pth")
+config_path = os.path.join(dir,"config.json")
 config = json.load(open(config_path, "r"))
 model = BT4(**config).to(device)
 model.load_state_dict(torch.load(weights_path))
@@ -143,7 +146,7 @@ num_steps = 10
 num_epochs=1000
 G = 16
 batch_size=128
-stockfish_path = "../../stockfish/stockfish-ubuntu-x86-64-avx2"
+stockfish_path = os.environ.get("STOCKFISH_PATH")
 depth = 15
 time = 1
 epsilon_grpo = 0.2
@@ -158,12 +161,12 @@ print("nb params : ", num_params)
 
 from src.data_process.data_gen import data_gen
 
-ds = data_gen({'batch_size': batch_size, 'path_pgn': '/home/antoine/Bureau/3A/3A_RL/ChessRL/pgn_data/', "with_fen": True})
+ds = data_gen({'batch_size': batch_size, 'path_pgn': os.environ.get("PGN_DIR"), "with_fen": True})
 opt = torch.optim.NAdam(model.parameters(), lr=5e-5)
 reward_model = RewardModel(stockfish_path, depth, time, num_engines=num_engines)
 
 import wandb
-
+wandb.login(key=os.environ.get("WANDB_KEY"))
 id = wandb.util.generate_id()
 wandb.init(project='ChessRL_tuning', id=id, resume='allow')
 

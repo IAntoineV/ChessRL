@@ -1,1 +1,23 @@
-STOCKFISH_PATH = ""
+# Your Weights & Biases API key
+WANDB_KEY=""
+
+# Path to the Stockfish chess engine executable
+STOCKFISH_PATH=""
+
+# Directory where PGN (Portable Game Notation) files are stored
+PGN_DIR=""
+
+# Directory where your supervised model is save
+MODEL_DIR=""
+
+# Path to the distilled model weights
+MODEL_DISTIL_WEIGHTS=""
+
+# Path to the distilled model config file
+MODEL_DISTIL_CONFIG=""
+
+# Path to the GRPO model weights
+MODEL_GRPO_WEIGHTS=""
+
+# Path to the GRPO model config file
+MODEL_GRPO_CONFIG=""

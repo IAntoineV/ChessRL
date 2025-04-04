@@ -1,7 +1,7 @@
 import chess
 import chess.pgn
 import numpy as np
-import torch
+
 def fen_to_tensor(fen: str):
     board = chess.Board(fen)
 

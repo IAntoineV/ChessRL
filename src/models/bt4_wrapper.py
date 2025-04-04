@@ -131,6 +131,10 @@ if __name__=="__main__":
     # Show how to load the wrapped version.
     import json
     import torch
+    from dotenv import load_dotenv
+    import os
+
+    load_dotenv()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("device : ", device)
@@ -139,7 +143,7 @@ if __name__=="__main__":
     history = 7
     pgn_path = "../../pgn_data_example/pgn_example.pgn"
 
-    dir = "../../models_saves/model_1/"
+    dir = os.environ.get("MODEL_DIR")
     weights_path = dir + "model.pth"
     config_path = dir + "config.json"
 

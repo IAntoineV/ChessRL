@@ -5,7 +5,6 @@ from typing import Tuple, List
 import random
 import ray
 import time
-import codecs
 import os
 from src.data_process.vocab import policy_index
 dic_piece = {"P": 0, "N": 1, "B": 2, "R": 3, "Q": 4, "K": 5, "p": 6, "n": 7, "b": 8, "r": 9, "q": 10, "k": 11}
@@ -638,7 +637,12 @@ class RemoteWorker(object):
 
 
 if __name__ == '__main__':
-    one_pgn_iterator = generate_batch(1024, '/home/antoine/Bureau/3A/3A_RL/ChessRL/pgn_data/lichess_elite_2024-01.pgn')
+    from dotenv import load_dotenv
+    load_dotenv()
+    pgn_dir =  os.environ.get("PGN_DIR")
+    pgn_path = os.path.join(pgn_dir,os.listdir(pgn_dir)[0])
+    print(f"pgn file : {pgn_path}")
+    one_pgn_iterator = generate_batch(1024, pgn_path)
     for i in range(10000000):
         print(i)
         x, y = next(one_pgn_iterator)

@@ -302,9 +302,17 @@ print("Number of unique tokens: ", len(policy_index))
 
 
 if __name__ == "__main__":
+    import os
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    pgn_dir = os.environ.get("PGN_DIR")
+    pgn_path = os.path.join(pgn_dir, os.listdir(pgn_dir)[0])
+    print(f"pgn file : {pgn_path}")
+
     modulator = PolicyIndex()
     from data_gen import generate_batch
-    one_pgn_iterator = generate_batch(1024, '/home/antoine/Bureau/3A/3A_RL/ChessRL/pgn_data/lichess_elite_2024-01.pgn')
+    one_pgn_iterator = generate_batch(1024, pgn_path)
     for i in range(10000000):
         print(i)
         x, y = next(one_pgn_iterator)

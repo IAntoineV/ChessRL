@@ -70,17 +70,24 @@ class BT4Bot(ChessBot):
 
 
 if __name__ == "__main__":
+    from dotenv import load_dotenv
+    import os
+    load_dotenv()
+    pgn_dir = os.environ.get("PGN_DIR")
+    pgn_path = os.path.join(pgn_dir, os.listdir(pgn_dir)[0])
+    print(f"pgn file : {pgn_path}")
+    model_dir = os.environ.get("MODEL_DIR")
+    print(f"model dir : {model_dir}")
+
     import chess.pgn
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("device : ", device)
     elo = 2700
     TC = "600"
     history = 7
-    pgn_path = "../../pgn_data_example/pgn_example.pgn"
 
-    dir = "../../models_saves/model_1/"
-    weights_path = dir + "model.pth"
-    config_path = dir + "config.json"
+    weights_path = os.path.join(model_dir, "model.pth")
+    config_path = os.path.join(model_dir,"config.json")
     bot = BT4Bot(weights_path,config_path, elo=elo, time_control=TC, history=history )
     with open(pgn_path, encoding="utf8") as f:
         # load game

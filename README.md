@@ -1,16 +1,55 @@
-# ChessRL
+# ChessRL ♟️
 
-This repo IA experiment that learns to play chess.
+**ChessRL** is a deep reinforcement learning experiment designed to train an AI to play chess. The project follows a two-phase approach:
 
-We have two goals :
+1. **Supervised Learning** – Train on strong player games to play "as a human".
+2. **Reinforcement Learning** – Improve the model through self-play using GRPO, guided by distillation from Stockfish evaluations.
 
-* Train an AI to beat stockfish in an RL environment (try with and without pretraining).
-* Train an AI to play against itself.
+---
+
+## 📥 Data Sources
+
+To train the model, you'll need strong human player games:
+
+- [NikoNoel’s Chess Game Database](https://database.nikonoel.fr/)
+- [Lichess PGN exports](https://lichess.org/games/export)
+
+---
+
+## 🛠️ Installation
+
+1. Clone the repo:
+
+```bash
+git clone https://github.com/IAntoineV/ChessRL
+cd ChessRL
+```
+
+Configure your environment:
+
+Install a stockfish compiled script from https://stockfishchess.org/download/
+
+Copy "./.env copy" to "./.env"
+
+Replace the value inside with your own values.
+
+Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
 
-You should download strong player games from : https://database.nikonoel.fr/
+## 🧠 Tutorials
 
-You can download also pgn data from lichess.
-### Installation
-- Replace the string in `.env copy` by the path to the compiler script of stockfish and rename the file as simply `.env`
+The `tutorials/` folder contains step-by-step Jupyter notebooks to help you understand and use the project effectively:
 
+| Notebook           | Description                                                                         |
+|--------------------|-------------------------------------------------------------------------------------|
+| `tutorial1.ipynb`  | 🧩 **Token Overview**: Explains the list of playable tokens used in the model.      |
+| `tutorial2.ipynb`  | 📘 **Supervised Learning**: Shows how to train the model on human games.            |
+| `tutorial3.ipynb`  | 🔁 **Reinforcement Learning**: Demonstrates GRPO training + Stockfish distillation. |
+| `tutorial4.ipynb`  | 📈 **Evaluation**: Evaluates the model's Elo using Stockfish.                       |
+
+To run a tutorial, make sure your environment is properly set up and all dependencies are installed. You’ll also need a valid path to the Stockfish engine set in the `.env` file.
+
+---

@@ -1,5 +1,8 @@
+mixture_of_experts
 attrs
 chess
 gymnasium
 python-dotenv
 ray
+torch
+tqdm
